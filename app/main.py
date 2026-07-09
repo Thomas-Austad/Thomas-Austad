@@ -1,11 +1,16 @@
-from fastapi import FastAPI, HTTPException, Response
+from fastapi import FastAPI, File, HTTPException, Response, UploadFile
 from pydantic import BaseModel
 from app.agents.profile_agent import CandidateProfileAgent
 from app.agents.compensation_agent import CompensationAgent
 from app.agents.match_agent import MatchAgent
 from app.agents.application_agent import ApplicationAgent
 from app.services.job_service import JobService
-from app.services.document_service import markdown_resume_to_docx
+from app.services.document_service import (
+    MAX_RESUME_UPLOAD_BYTES,
+    ResumeExtractionError,
+    extract_resume_text,
+    markdown_resume_to_docx,
+)
 from app import store
 
 app = FastAPI(title="Talent Advisor Platform", version="0.1.0")
@@ -40,6 +45,15 @@ async def create_profile(req: ProfileRequest):
     profile = await CandidateProfileAgent().run(req.candidate_id, req.resume_text, req.linkedin_text, req.preferences)
     store.profiles[profile.candidate_id] = profile
     return profile
+
+
+@app.post("/resumes/extract")
+async def extract_resume(file: UploadFile = File(...)):
+    content = await file.read(MAX_RESUME_UPLOAD_BYTES + 1)
+    try:
+        return extract_resume_text(content, file.filename)
+    except ResumeExtractionError as exc:
+        raise HTTPException(400, str(exc)) from exc
 
 
 @app.post("/jobs/search")
