@@ -51,3 +51,11 @@ Expose the MCP endpoint through an HTTPS development tunnel, then add it in Chat
 ## Important boundary
 
 This MVP prepares and tracks applications. Direct submission must be implemented only through approved ATS/job-board APIs or a user-controlled browser assistant. Never guess legally meaningful screening answers or submit without explicit approval.
+
+## Development workflow
+
+Repository-specific engineering rules live in `AGENTS.md`.
+
+For explicit autonomous maintenance runs, use
+`docs/autonomous-application-development-workflow.md`. An example invocation and
+expected stop report are in `docs/autonomous-workflow-example.md`.

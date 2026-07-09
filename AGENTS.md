@@ -68,6 +68,17 @@ pytest
 
 Also run any type checker, migration check, front-end build, security scanner, or integration test introduced by the change. Report commands run and any checks that could not be run.
 
+## Autonomous workflow
+
+When the user explicitly asks to run the autonomous development loop, follow
+`docs/autonomous-application-development-workflow.md`.
+
+Do not start that loop implicitly. Ordinary coding, review, documentation, or
+issue-triage requests should stay scoped to the user's request.
+
+The security, privacy, approval, testing, and definition-of-done rules in this
+file remain mandatory. They override any weaker workflow instruction.
+
 ## Non-negotiable product rules
 
 - Never fabricate experience, credentials, dates, metrics, degrees, licenses, salary history, work authorization, demographic information, or screening answers.
