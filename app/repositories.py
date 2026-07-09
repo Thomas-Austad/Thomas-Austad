@@ -8,7 +8,13 @@ import sqlalchemy as sa
 from pydantic import BaseModel
 from sqlalchemy.engine import Engine
 
-from app.models.schemas import ApplicationPackage, CandidateProfile, JobListing, JobMatch
+from app.models.schemas import (
+    ApplicationPackage,
+    CandidateProfile,
+    EvidenceRecord,
+    JobListing,
+    JobMatch,
+)
 
 metadata = sa.MetaData()
 
@@ -18,6 +24,19 @@ candidate_profiles_table = sa.Table(
     sa.Column("id", sa.Uuid(), primary_key=True),
     sa.Column("external_id", sa.Text(), nullable=False, unique=True),
     sa.Column("profile", sa.JSON(), nullable=False),
+)
+
+career_evidence_table = sa.Table(
+    "career_evidence",
+    metadata,
+    sa.Column("id", sa.Uuid(), primary_key=True),
+    sa.Column("candidate_profile_id", sa.Uuid(), nullable=False),
+    sa.Column("source_type", sa.Text(), nullable=False),
+    sa.Column("source_ref", sa.Text()),
+    sa.Column("excerpt", sa.Text(), nullable=False),
+    sa.Column("confidence", sa.Numeric(), nullable=False),
+    sa.Column("claim_type", sa.Text(), nullable=False),
+    sa.Column("claim_ref", sa.Text(), nullable=False),
 )
 
 jobs_table = sa.Table(
@@ -67,6 +86,47 @@ def _dump_model(model: BaseModel) -> dict:
     return model.model_dump(mode="json")
 
 
+def _profile_evidence_records(profile: CandidateProfile) -> list[EvidenceRecord]:
+    records: list[EvidenceRecord] = []
+    for skill in profile.skills:
+        for evidence in skill.evidence:
+            records.append(
+                EvidenceRecord(
+                    candidate_id=profile.candidate_id,
+                    claim_type="skill",
+                    claim_ref=skill.name,
+                    source=evidence.source,
+                    text=evidence.text,
+                    confidence=evidence.confidence,
+                )
+            )
+    for experience in profile.experience:
+        claim_ref = f"{experience.employer}: {experience.title}"
+        for evidence in experience.evidence:
+            records.append(
+                EvidenceRecord(
+                    candidate_id=profile.candidate_id,
+                    claim_type="experience",
+                    claim_ref=claim_ref,
+                    source=evidence.source,
+                    text=evidence.text,
+                    confidence=evidence.confidence,
+                )
+            )
+    for ambiguity in profile.ambiguities:
+        records.append(
+            EvidenceRecord(
+                candidate_id=profile.candidate_id,
+                claim_type="ambiguity",
+                claim_ref=ambiguity,
+                source="profile",
+                text=ambiguity,
+                confidence=0,
+            )
+        )
+    return records
+
+
 class ProfileRepository:
     def __init__(self, engine: Engine) -> None:
         self.engine = engine
@@ -85,12 +145,40 @@ class ProfileRepository:
                     .where(candidate_profiles_table.c.external_id == key)
                     .values(profile=payload)
                 )
+                self._replace_evidence(connection, existing_id, value)
                 return
+            profile_id = uuid.uuid4()
             connection.execute(
                 candidate_profiles_table.insert().values(
-                    id=uuid.uuid4(),
+                    id=profile_id,
                     external_id=key,
                     profile=payload,
+                )
+            )
+            self._replace_evidence(connection, profile_id, value)
+
+    def _replace_evidence(
+        self,
+        connection: sa.Connection,
+        profile_id: uuid.UUID,
+        profile: CandidateProfile,
+    ) -> None:
+        connection.execute(
+            career_evidence_table.delete().where(
+                career_evidence_table.c.candidate_profile_id == profile_id
+            )
+        )
+        for record in _profile_evidence_records(profile):
+            connection.execute(
+                career_evidence_table.insert().values(
+                    id=uuid.uuid4(),
+                    candidate_profile_id=profile_id,
+                    source_type=record.source,
+                    source_ref=record.source_ref,
+                    excerpt=record.text,
+                    confidence=record.confidence,
+                    claim_type=record.claim_type,
+                    claim_ref=record.claim_ref,
                 )
             )
 
@@ -105,12 +193,49 @@ class ProfileRepository:
 
     def clear(self) -> None:
         with self.engine.begin() as connection:
+            connection.execute(career_evidence_table.delete())
             connection.execute(candidate_profiles_table.delete())
 
     def values(self) -> list[CandidateProfile]:
         with self.engine.begin() as connection:
             rows = connection.scalars(sa.select(candidate_profiles_table.c.profile)).all()
         return [CandidateProfile.model_validate(row) for row in rows]
+
+
+class EvidenceRepository:
+    def __init__(self, engine: Engine) -> None:
+        self.engine = engine
+
+    def for_candidate(self, candidate_id: str) -> list[EvidenceRecord]:
+        with self.engine.begin() as connection:
+            rows = connection.execute(
+                sa.select(
+                    career_evidence_table.c.source_type,
+                    career_evidence_table.c.source_ref,
+                    career_evidence_table.c.excerpt,
+                    career_evidence_table.c.confidence,
+                    career_evidence_table.c.claim_type,
+                    career_evidence_table.c.claim_ref,
+                )
+                .join(
+                    candidate_profiles_table,
+                    candidate_profiles_table.c.id == career_evidence_table.c.candidate_profile_id,
+                )
+                .where(candidate_profiles_table.c.external_id == candidate_id)
+                .order_by(career_evidence_table.c.claim_type, career_evidence_table.c.claim_ref)
+            ).all()
+        return [
+            EvidenceRecord(
+                candidate_id=candidate_id,
+                claim_type=row.claim_type,
+                claim_ref=row.claim_ref,
+                source=row.source_type,
+                source_ref=row.source_ref,
+                text=row.excerpt,
+                confidence=float(row.confidence),
+            )
+            for row in rows
+        ]
 
 
 class JobRepository:
@@ -293,6 +418,7 @@ class ModelMapping(Generic[K, T]):
 class RepositoryStore:
     def __init__(self, engine: Engine) -> None:
         self.profiles = ModelMapping[str, CandidateProfile](ProfileRepository(engine))
+        self.evidence = EvidenceRepository(engine)
         self.jobs = ModelMapping[str, JobListing](JobRepository(engine))
         self.matches = ModelMapping[tuple[str, str], JobMatch](MatchRepository(engine))
         self.applications = ModelMapping[str, ApplicationPackage](ApplicationRepository(engine))

@@ -4,9 +4,15 @@ from app.models.schemas import ApplicationPackage, CandidateProfile, JobListing,
 from app.repositories import create_repository_store
 
 
+class InMemoryEvidenceRepository:
+    def for_candidate(self, candidate_id: str) -> list:
+        return []
+
+
 class InMemoryStore:
     def __init__(self) -> None:
         self.profiles: dict[str, CandidateProfile] = {}
+        self.evidence = InMemoryEvidenceRepository()
         self.jobs: dict[str, JobListing] = {}
         self.matches: dict[tuple[str, str], JobMatch] = {}
         self.applications: dict[str, ApplicationPackage] = {}

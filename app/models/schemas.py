@@ -15,6 +15,16 @@ class Evidence(BaseModel):
     confidence: float = Field(ge=0, le=1)
 
 
+class EvidenceRecord(BaseModel):
+    candidate_id: str
+    claim_type: Literal["skill", "experience", "ambiguity"]
+    claim_ref: str
+    source: Literal["resume", "linkedin", "user", "job", "profile"]
+    text: str
+    confidence: float = Field(ge=0, le=1)
+    source_ref: str | None = None
+
+
 class Skill(BaseModel):
     name: str
     proficiency: float = Field(ge=0, le=1)
@@ -28,6 +38,7 @@ class WorkExperience(BaseModel):
     start_date: str | None = None
     end_date: str | None = None
     achievements: list[str] = []
+    evidence: list[Evidence] = []
 
 
 class CandidatePreferences(BaseModel):
