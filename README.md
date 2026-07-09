@@ -24,6 +24,8 @@ cp .env.example .env
 python -m venv .venv
 source .venv/bin/activate  # Windows: .venv\\Scripts\\activate
 pip install -e .[dev]
+docker compose up -d db
+alembic upgrade head
 uvicorn app.main:app --reload
 ```
 
