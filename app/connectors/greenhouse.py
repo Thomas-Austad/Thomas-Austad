@@ -1,12 +1,13 @@
 import httpx
 from bs4 import BeautifulSoup
+from app.config import settings
 from app.models.schemas import JobListing
 
 
 class GreenhouseConnector:
     async def fetch_board(self, board_token: str) -> list[JobListing]:
         url = f"https://boards-api.greenhouse.io/v1/boards/{board_token}/jobs?content=true"
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with httpx.AsyncClient(timeout=settings.connector_timeout_seconds) as client:
             data = (await client.get(url)).raise_for_status().json()
         jobs = []
         for item in data.get("jobs", []):

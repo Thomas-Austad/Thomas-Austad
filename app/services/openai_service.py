@@ -5,7 +5,11 @@ from app.config import settings
 
 class OpenAIService:
     def __init__(self) -> None:
-        self.client = AsyncOpenAI(api_key=settings.openai_api_key)
+        self.client = AsyncOpenAI(
+            api_key=settings.openai_api_key,
+            timeout=settings.openai_timeout_seconds,
+            max_retries=settings.openai_max_retries,
+        )
 
     async def structured(self, *, system: str, user: str, schema: type[BaseModel]) -> BaseModel:
         response = await self.client.responses.parse(

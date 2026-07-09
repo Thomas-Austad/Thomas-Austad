@@ -12,6 +12,10 @@ class Settings(BaseSettings):
     app_env: Literal["development", "test", "production"] = "development"
     openai_api_key: str = ""
     openai_model: str = "gpt-5.5"
+    openai_timeout_seconds: float = 30
+    openai_max_retries: int = 2
+    connector_timeout_seconds: float = 30
+    connector_max_attempts: int = 2
     database_url: str = DEFAULT_DATABASE_URL
     public_base_url: str = "http://localhost:8000"
     audit_log_path: str = "var/audit/events.jsonl"

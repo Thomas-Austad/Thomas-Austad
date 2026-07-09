@@ -1,12 +1,13 @@
 import httpx
 from bs4 import BeautifulSoup
+from app.config import settings
 from app.models.schemas import JobListing
 
 
 class LeverConnector:
     async def fetch_company(self, company: str) -> list[JobListing]:
         url = f"https://api.lever.co/v0/postings/{company}?mode=json"
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with httpx.AsyncClient(timeout=settings.connector_timeout_seconds) as client:
             data = (await client.get(url)).raise_for_status().json()
         jobs = []
         for item in data:
