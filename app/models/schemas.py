@@ -106,6 +106,20 @@ class JobMatch(BaseModel):
     recommendation: Literal["apply", "consider", "skip"]
 
 
+class ScreeningQuestionReview(BaseModel):
+    question: str
+    category: Literal[
+        "personal",
+        "legal",
+        "demographic",
+        "disability",
+        "criminal_history",
+        "salary_history",
+        "work_authorization",
+    ]
+    reason: str
+
+
 class ApplicationPackage(BaseModel):
     application_id: str
     candidate_id: str
@@ -115,6 +129,7 @@ class ApplicationPackage(BaseModel):
     screening_answers: dict[str, str] = {}
     factual_warnings: list[str] = []
     requires_user_input: list[str] = []
+    unresolved_screening_questions: list[ScreeningQuestionReview] = []
     status: Literal["prepared", "approved", "submitted", "failed"] = "prepared"
 
 

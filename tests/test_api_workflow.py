@@ -3,6 +3,7 @@ from fastapi.testclient import TestClient
 from app import store
 from app.main import app
 from app.models.schemas import JobListing
+from app.services.audit_service import read_audit_events
 
 
 def test_core_api_workflow_uses_stored_state(
@@ -121,7 +122,8 @@ def test_missing_records_return_not_found(sample_profile):
     assert approval_response.json()["detail"] == "Application not found"
 
 
-def test_approval_requires_resolved_user_input(sample_application):
+def test_approval_requires_resolved_user_input(sample_application, tmp_path, monkeypatch):
+    monkeypatch.setattr("app.config.settings.audit_log_path", str(tmp_path / "audit.jsonl"))
     sample_application.requires_user_input = ["Confirm work authorization directly with the user."]
     store.applications[sample_application.application_id] = sample_application
 
@@ -130,6 +132,26 @@ def test_approval_requires_resolved_user_input(sample_application):
     assert response.status_code == 409
     assert response.json()["detail"] == "Resolve required user inputs before approval"
     assert store.applications[sample_application.application_id].status == "prepared"
+    assert read_audit_events(tmp_path / "audit.jsonl") == []
+
+
+def test_approval_records_non_sensitive_audit_event(sample_application, tmp_path, monkeypatch):
+    audit_path = tmp_path / "audit.jsonl"
+    monkeypatch.setattr("app.config.settings.audit_log_path", str(audit_path))
+    store.applications[sample_application.application_id] = sample_application
+
+    response = TestClient(app).post(
+        f"/applications/{sample_application.application_id}/approve",
+        headers={"x-request-id": "request-123"},
+    )
+
+    assert response.status_code == 200
+    events = read_audit_events(audit_path)
+    assert len(events) == 1
+    assert events[0].action == "application.approve"
+    assert events[0].target_id == sample_application.application_id
+    assert events[0].result == "approved"
+    assert events[0].request_id == "request-123"
 
 
 def test_job_search_title_keywords_filter_results(monkeypatch, sample_job):

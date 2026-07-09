@@ -1,4 +1,6 @@
-from fastapi import FastAPI, File, HTTPException, Response, UploadFile
+import uuid
+
+from fastapi import FastAPI, File, HTTPException, Request, Response, UploadFile
 from pydantic import BaseModel
 from app.agents.profile_agent import CandidateProfileAgent
 from app.agents.compensation_agent import CompensationAgent
@@ -11,6 +13,7 @@ from app.services.document_service import (
     extract_resume_text,
     markdown_resume_to_docx,
 )
+from app.services.audit_service import record_approval_audit_event
 from app import store
 
 app = FastAPI(title="Talent Advisor Platform", version="0.1.0")
@@ -99,13 +102,15 @@ async def prepare_application(req: ApplicationRequest):
 
 
 @app.post("/applications/{application_id}/approve")
-def approve_application(application_id: str):
+def approve_application(application_id: str, request: Request):
     package = store.applications.get(application_id)
     if not package:
         raise HTTPException(404, "Application not found")
     if package.requires_user_input:
         raise HTTPException(409, "Resolve required user inputs before approval")
     package.status = "approved"
+    request_id = request.headers.get("x-request-id", str(uuid.uuid4()))
+    record_approval_audit_event(application_id, "approved", request_id)
     return package
 
 

@@ -6,6 +6,7 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-5.5"
     database_url: str = "sqlite:///./talent_advisor.db"
     public_base_url: str = "http://localhost:8000"
+    audit_log_path: str = "var/audit/events.jsonl"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
