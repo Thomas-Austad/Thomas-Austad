@@ -1,4 +1,3 @@
-import json
 from openai import AsyncOpenAI
 from pydantic import BaseModel
 from app.config import settings

@@ -1,4 +1,3 @@
-import hashlib
 import httpx
 from bs4 import BeautifulSoup
 from app.models.schemas import JobListing
