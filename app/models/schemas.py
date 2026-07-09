@@ -112,3 +112,10 @@ class ApplicationPackage(BaseModel):
     factual_warnings: list[str] = []
     requires_user_input: list[str] = []
     status: Literal["prepared", "approved", "submitted", "failed"] = "prepared"
+
+
+class ExtractedResume(BaseModel):
+    filename: str | None = None
+    content_type: Literal["application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"]
+    text: str
+    character_count: int
