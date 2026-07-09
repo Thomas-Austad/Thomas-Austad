@@ -1,4 +1,8 @@
+import os
+
 import pytest
+
+os.environ["APP_ENV"] = "test"
 
 from app import store
 from app.models.schemas import (

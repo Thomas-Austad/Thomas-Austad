@@ -109,6 +109,7 @@ def approve_application(application_id: str, request: Request):
     if package.requires_user_input:
         raise HTTPException(409, "Resolve required user inputs before approval")
     package.status = "approved"
+    store.applications[application_id] = package
     request_id = request.headers.get("x-request-id", str(uuid.uuid4()))
     record_approval_audit_event(application_id, "approved", request_id)
     return package

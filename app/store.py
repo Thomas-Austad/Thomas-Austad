@@ -1,7 +1,25 @@
-from app.models.schemas import CandidateProfile, JobListing, JobMatch, ApplicationPackage
+import os
 
-# Personal-use MVP store. Replace with PostgreSQL repositories before multi-user deployment.
-profiles: dict[str, CandidateProfile] = {}
-jobs: dict[str, JobListing] = {}
-matches: dict[tuple[str, str], JobMatch] = {}
-applications: dict[str, ApplicationPackage] = {}
+from app.models.schemas import ApplicationPackage, CandidateProfile, JobListing, JobMatch
+from app.repositories import create_repository_store
+
+
+class InMemoryStore:
+    def __init__(self) -> None:
+        self.profiles: dict[str, CandidateProfile] = {}
+        self.jobs: dict[str, JobListing] = {}
+        self.matches: dict[tuple[str, str], JobMatch] = {}
+        self.applications: dict[str, ApplicationPackage] = {}
+
+
+if os.getenv("APP_ENV") == "test":
+    _store = InMemoryStore()
+else:
+    from app.db import get_engine
+
+    _store = create_repository_store(get_engine())
+
+profiles = _store.profiles
+jobs = _store.jobs
+matches = _store.matches
+applications = _store.applications
