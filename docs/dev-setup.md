@@ -21,6 +21,7 @@ python -m alembic upgrade head
 ```powershell
 python -m ruff check .
 python -m pytest
+python -m pytest -m eval
 python -m alembic upgrade head
 ```
 
