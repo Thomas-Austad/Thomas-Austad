@@ -52,6 +52,8 @@ Expose the MCP endpoint through an HTTPS development tunnel, then add it in Chat
 
 This MVP prepares and tracks applications. Direct submission must be implemented only through approved ATS/job-board APIs or a user-controlled browser assistant. Never guess legally meaningful screening answers or submit without explicit approval.
 
+API datetime fields are serialized as ISO 8601 timestamps with explicit UTC offsets.
+
 ## Development workflow
 
 Repository-specific engineering rules live in `AGENTS.md`.

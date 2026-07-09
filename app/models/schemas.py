@@ -1,8 +1,12 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Literal
 from pydantic import BaseModel, Field, HttpUrl
+
+
+def utc_now() -> datetime:
+    return datetime.now(UTC)
 
 
 class Evidence(BaseModel):
@@ -48,7 +52,7 @@ class CandidateProfile(BaseModel):
     certifications: list[str] = []
     preferences: CandidatePreferences = CandidatePreferences()
     ambiguities: list[str] = []
-    generated_at: datetime = Field(default_factory=datetime.utcnow)
+    generated_at: datetime = Field(default_factory=utc_now)
 
 
 class CompensationEstimate(BaseModel):
