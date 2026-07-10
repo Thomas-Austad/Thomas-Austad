@@ -7,3 +7,5 @@ __pycache__/
 *.egg-info/
 talent_advisor_platform.egg-info/
 var/
+widget/node_modules/
+widget/dist/

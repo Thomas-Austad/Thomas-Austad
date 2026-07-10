@@ -35,10 +35,18 @@ Health check: `http://localhost:8000/health`
 Run MCP server:
 
 ```bash
+cd widget
+pnpm install --frozen-lockfile
+pnpm build
+cd ..
 python -m app.mcp_server
 ```
 
 MCP uses local stdio. Do not expose it through a development tunnel or public URL.
+The widget build is required because the local MCP resource serves the generated
+UI assets. Run `pnpm test --run` and `pnpm typecheck` from `widget/` while
+developing the UI. The widget does not receive the local bearer credential and
+does not call the loopback API directly.
 
 ## Typical workflow
 

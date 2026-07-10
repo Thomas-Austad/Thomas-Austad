@@ -1,5 +1,6 @@
 """Minimal MCP tool surface for ChatGPT. Run separately from FastAPI during development."""
 import uuid
+from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 from app.main import (
@@ -16,6 +17,43 @@ from app.models.schemas import ProfileCorrectionRequest
 
 mcp = FastMCP("Talent Advisor")
 
+WIDGET_RESOURCE_URI = "ui://talent-advisor/widget.html"
+WIDGET_DIST_DIR = Path(__file__).resolve().parents[1] / "widget" / "dist"
+WIDGET_TEMPLATE_META = {"openai/outputTemplate": WIDGET_RESOURCE_URI}
+WIDGET_RESOURCE_META = {
+    "ui": {
+        "csp": {
+            "connectDomains": [],
+            "frameDomains": [],
+            "resourceDomains": [],
+        }
+    }
+}
+
+
+def load_widget_resource() -> str:
+    """Return the self-contained local widget without exposing any credential."""
+    script = WIDGET_DIST_DIR / "talent-advisor-widget.js"
+    stylesheet = WIDGET_DIST_DIR / "talent-advisor-widget.css"
+    if not script.is_file() or not stylesheet.is_file():
+        raise RuntimeError("Widget assets are unavailable; run the widget build first")
+    return """<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><style>""" + stylesheet.read_text(
+        encoding="utf-8"
+    ) + """</style></head><body><talent-advisor-widget></talent-advisor-widget>
+<script type="module">""" + script.read_text(encoding="utf-8") + """</script></body></html>"""
+
+
+@mcp.resource(
+    WIDGET_RESOURCE_URI,
+    name="Talent Advisor widget",
+    description="Local review workspace UI for Talent Advisor MCP tools.",
+    mime_type="text/html;profile=mcp-app",
+    meta=WIDGET_RESOURCE_META,
+)
+def talent_advisor_widget() -> str:
+    return load_widget_resource()
+
 
 @mcp.tool()
 async def create_candidate_profile(candidate_id: str, resume_text: str, linkedin_text: str = "", preferences: dict | None = None):
@@ -24,7 +62,7 @@ async def create_candidate_profile(candidate_id: str, resume_text: str, linkedin
                                                 linkedin_text=linkedin_text, preferences=preferences or {}))).model_dump()
 
 
-@mcp.tool()
+@mcp.tool(meta=WIDGET_TEMPLATE_META)
 async def review_candidate_profile(candidate_id: str):
     """Read a profile with its source evidence and prior user-provided corrections."""
     return get_profile_review(candidate_id).model_dump(mode="json")
@@ -47,7 +85,7 @@ async def correct_candidate_profile(
     ).model_dump(mode="json")
 
 
-@mcp.tool()
+@mcp.tool(meta=WIDGET_TEMPLATE_META)
 async def find_jobs(greenhouse_boards: list[str], lever_companies: list[str], title_keywords: list[str] | None = None):
     """Retrieve active jobs from supported ATS boards."""
     return await search_jobs(JobSearchRequest(greenhouse_boards=greenhouse_boards,
@@ -55,19 +93,19 @@ async def find_jobs(greenhouse_boards: list[str], lever_companies: list[str], ti
                                               title_keywords=title_keywords or []))
 
 
-@mcp.tool()
+@mcp.tool(meta=WIDGET_TEMPLATE_META)
 async def evaluate_job_match(candidate_id: str, job_id: str):
     """Score a candidate against a job and explain gaps and disqualifiers."""
     return (await score_match(candidate_id, job_id)).model_dump()
 
 
-@mcp.tool()
+@mcp.tool(meta=WIDGET_TEMPLATE_META)
 async def estimate_market_compensation(candidate_id: str, role_family: str, geography: str):
     """Estimate a current compensation range using profile and collected jobs."""
     return (await estimate_compensation(candidate_id, role_family, geography)).model_dump()
 
 
-@mcp.tool()
+@mcp.tool(meta=WIDGET_TEMPLATE_META)
 async def prepare_job_application(candidate_id: str, job_id: str, screening_questions: list[str] | None = None):
     """Prepare a truthful tailored resume, cover letter, and screening answers for user review."""
     return (await prepare_application(ApplicationRequest(candidate_id=candidate_id, job_id=job_id,
