@@ -12,7 +12,7 @@ POSTGRES_SCHEMES = ("postgresql://", "postgresql+psycopg://", "postgresql+psycop
 class Settings(BaseSettings):
     app_env: Literal["development", "test", "production"] = "development"
     openai_api_key: str = ""
-    openai_model: str = "gpt-5.5"
+    openai_model: str = "gpt-5.6"
     openai_timeout_seconds: float = 30
     openai_max_retries: int = 2
     connector_timeout_seconds: float = 30

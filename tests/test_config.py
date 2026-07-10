@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 from pydantic import ValidationError
 
@@ -9,6 +11,25 @@ def test_default_database_url_uses_postgres() -> None:
 
     assert settings.database_url == DEFAULT_DATABASE_URL
     assert settings.database_url.startswith("postgresql+psycopg://")
+
+
+def test_default_model_matches_the_example_configuration() -> None:
+    settings = Settings(_env_file=None)
+    example_config = Path(__file__).parents[1] / ".env.example"
+    example_model = next(
+        line.partition("=")[2]
+        for line in example_config.read_text(encoding="utf-8").splitlines()
+        if line.startswith("OPENAI_MODEL=")
+    )
+
+    assert settings.openai_model == "gpt-5.6"
+    assert settings.openai_model == example_model
+
+
+def test_openai_model_can_be_explicitly_configured() -> None:
+    settings = Settings(openai_model="configured-model", _env_file=None)
+
+    assert settings.openai_model == "configured-model"
 
 
 @pytest.mark.parametrize(
