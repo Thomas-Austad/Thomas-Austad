@@ -18,6 +18,136 @@ Optimize for correctness, security, explainability, and user control before spee
 - `widget/`: future ChatGPT Apps/MCP Apps UI. Use TypeScript with strict mode when implemented.
 - `docs/`: architecture, threat model, decisions, and delivery plans.
 
+## Adaptive Codex usage policy
+
+Choose for successful, verified delivery per unit of usage; never trade away
+security, truthfulness, approval gates, tests, or a necessary investigation to
+save tokens. Do not recommend or select GPT-5.5 unless the user requests it or
+a documented compatibility requirement demands it.
+
+### Per-task assessment
+
+Before implementation (or before selecting an autonomous issue), record a short
+assessment in the work notes or status update:
+
+```text
+Scope/risk: <low | normal | high>; <affected components and trust boundary>
+Route: <Luna low | Terra medium | Sol high>; <one-sentence justification>
+Verify: <smallest relevant checks, then required completion checks>
+Blockers/approval: <none or exact credential, permission, decision, or approval needed>
+```
+
+Keep it to four lines. Do not repeat it after a task is materially unchanged.
+
+### Model and reasoning routing
+
+- **Default: GPT-5.6 Terra with medium reasoning.** Use it for ordinary,
+  bounded implementation, bug fixes, tests, refactors with established
+  patterns, documentation that requires repository synthesis, and normal issue
+  triage. This codebase's Python/FastAPI, Pydantic, SQLAlchemy, Alembic, and
+  pytest work is usually in this category.
+- **GPT-5.6 Luna with low reasoning** is appropriate only for narrow,
+  mechanical, low-risk, objectively verifiable work: locating files, reading
+  status, formatting a known Markdown edit, a single unambiguous config or test
+  assertion correction, or drafting a bounded issue from established evidence.
+  Do not use Luna for a task that changes a trust boundary, policy, persistence,
+  public API, model prompt, or approval behavior. Escalate to Terra after one
+  unsuccessful Luna attempt or when scope becomes unclear.
+- **GPT-5.6 Sol with high reasoning** is required for architecture decisions or
+  changes involving `app/main.py`, `app/mcp_server.py`, `app/models/schemas.py`,
+  `app/config.py`, `app/agents/`, `app/connectors/`,
+  `app/services/openai_service.py`, authentication or ownership,
+  audit/consent/approval state, PII retention or document handling,
+  prompt-injection controls, SSRF/network policy, migrations/repositories and
+  integrity constraints, dependency/security changes, CI/deployment security,
+  or broad cross-component work. Use Sol for a release-blocking security review
+  and when an issue spans several of these areas.
+- Escalate Terra to Sol after two evidence-based, materially different failed
+  implementation or debugging approaches; escalate sooner when the failure
+  could conceal a security, privacy, authorization, state-transition, or data
+  integrity defect. Do not repeat the same command or patch hoping for a
+  different result.
+- Use Max or Ultra only after a Sol/high-reasoning attempt has demonstrably
+  failed on an unusually complex problem and the user or orchestrator can make
+  that route available. State the concrete reason before requesting it.
+
+Model selection is a recommendation, not permission to misrepresent runtime
+state. This repository has no model-routing configuration or orchestrator that
+can switch a Codex session automatically. If the requested route is unavailable,
+say which route is recommended and which model/reasoning level is actually in
+use; do not claim a model switch, alter billing, switch credentials, or retry to
+bypass a platform usage limit.
+
+### Context and token discipline
+
+- Start with this file, the selected issue or user request, `README.md`, the
+  directly affected files, relevant tests, and only the one-hop dependencies
+  needed to understand the behavior. For multi-file, security-sensitive, or
+  architectural work, create or update the required plan in `docs/` first.
+- Use `rg --files`, `rg -n`, targeted `git diff`, and targeted test selection
+  before broad recursive reads. Read an entire file only when its complete
+  contract is relevant; summarize findings rather than repeatedly loading it.
+- Do not load `.venv/`, `.pytest_cache/`, `.ruff_cache/`, `__pycache__/`,
+  `*.egg-info/`, `var/`, `.env`, Docker volumes, generated DOCX/PDF files, or
+  build output unless the task specifically concerns them. Never place their
+  sensitive contents in prompts, logs, fixtures, or commits.
+- Request concise command output first. On failure, inspect the relevant test,
+  traceback, and changed files instead of rerunning the full suite or collecting
+  oversized logs. Preserve enough evidence to diagnose the root cause.
+- Keep one task or one autonomous issue active at a time. Avoid unrelated
+  refactors, speculative investigation, duplicated plans, and repeated context
+  gathering once the relevant facts are known.
+
+### Retry, blocked-work, and usage-limit rules
+
+- Diagnose before changing course. Make at most three materially different
+  corrections for one root cause; do not count a verbatim retry as a new
+  attempt. A Luna failure routes to Terra; two Terra failures route to Sol; a
+  Sol attempt that still needs unavailable information, authority, or a fourth
+  correction is blocked pending human direction.
+- Stop immediately, leave the worktree valid, and report the exact blocker when
+  a required permission, credential, service, model route, tool, or external
+  decision is unavailable. Do not fabricate a result, weaken requirements,
+  substitute an unapproved provider, expose a secret, or make external changes
+  outside the authorized scope.
+- If the platform reports a usage, rate, plan, credit, or spending limit, stop
+  sending requests. Do not retry, purchase capacity, modify billing, rotate or
+  switch credentials, or try to bypass the limit. Preserve the diff and state
+  what remains for a later session.
+- For a blocked autonomous issue, follow the documented issue-comment and
+  blocked-label process only when GitHub write access and the current task's
+  authority permit it. Otherwise leave the issue open and report the failed
+  check, attempts, and required input. Do not start another issue while local
+  changes cannot be safely separated.
+
+### Validation ladder
+
+Run the smallest relevant check first to get fast feedback, then expand based
+on risk. The existing completion gate remains `ruff check .` and `pytest`.
+
+- **Instructions or documentation only:** review the diff, run `git diff --check`,
+  and confirm every referenced path and command exists. Do not run application
+  tests solely for an instruction-only change unless the changed instructions
+  require a check.
+- **Small, isolated application or test change:** run the affected pytest file
+  or test first, then `python -m ruff check .` and `python -m pytest` before
+  declaring completion.
+- **Agent/model, connector, API, document, or approval change:** run focused
+  tests first, then the completion gate and `python -m pytest -m eval` when
+  agent behavior or its safety invariants are affected.
+- **Migration/repository/configuration change:** also run
+  `.\\.venv\\Scripts\\python.exe -m alembic upgrade head --sql` when the local
+  virtual environment is available. Use the configured interpreter equivalent
+  if it is not.
+- **Container, CI, or deployment change:** inspect the affected workflow or
+  image configuration and run the smallest relevant build or smoke check in
+  addition to the completion gate when the necessary local tooling is available.
+
+Do not invent a type-check, formatter, front-end build, integration test, or
+security scanner that this repository has not configured. When one is added or
+affected, run it and record the result. Never skip, weaken, or delete tests to
+make a check pass.
+
 ## Required workflow
 
 Before changing code:
@@ -59,7 +189,7 @@ gh issue create \
   --label "priority-high"
 ```
 
-Before declaring work complete:
+Before declaring a code or behavior change complete:
 
 ```bash
 ruff check .
@@ -67,6 +197,9 @@ pytest
 ```
 
 Also run any type checker, migration check, front-end build, security scanner, or integration test introduced by the change. Report commands run and any checks that could not be run.
+
+For documentation- or instruction-only changes, use the documentation rung of
+the validation ladder above instead of the application suite.
 
 ## Autonomous workflow
 
@@ -78,6 +211,15 @@ issue-triage requests should stay scoped to the user's request.
 
 The security, privacy, approval, testing, and definition-of-done rules in this
 file remain mandatory. They override any weaker workflow instruction.
+
+For each autonomous issue, first confirm that its acceptance criteria are
+specific, its dependencies and required credentials are available, and its
+scope can be completed without an external approval. Then make the per-task
+assessment above, inspect only the relevant implementation and tests, and work
+one issue to a verified stopping point. Never close an issue until its
+acceptance criteria and required checks have evidence; move to the next suitable
+issue only with a clean or safely separable worktree and remaining authorized
+usage.
 
 ## Non-negotiable product rules
 
