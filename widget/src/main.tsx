@@ -1,10 +1,15 @@
 import { createRoot, type Root } from "react-dom/client";
 
 import { App } from "./App";
+import { AppsBridge } from "./bridge";
+import type { ProfileToolClient } from "./profileClient";
 import "./styles.css";
+
+const CHATGPT_HOST_ORIGIN = "https://chatgpt.com";
 
 class TalentAdvisorWidget extends HTMLElement {
   #root: Root | undefined;
+  #bridge: AppsBridge | undefined;
 
   connectedCallback(): void {
     if (this.#root) {
@@ -13,10 +18,18 @@ class TalentAdvisorWidget extends HTMLElement {
     const mountPoint = document.createElement("div");
     this.appendChild(mountPoint);
     this.#root = createRoot(mountPoint);
-    this.#root.render(<App />);
+    this.#bridge = new AppsBridge({
+      allowedOrigins: [CHATGPT_HOST_ORIGIN],
+      eventTarget: window,
+      hostWindow: window.parent
+    });
+    this.#bridge.start();
+    this.#root.render(<App profileClient={this.#bridge as ProfileToolClient} />);
   }
 
   disconnectedCallback(): void {
+    this.#bridge?.dispose();
+    this.#bridge = undefined;
     this.#root?.unmount();
     this.#root = undefined;
   }

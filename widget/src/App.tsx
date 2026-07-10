@@ -1,8 +1,8 @@
 import { useState } from "react";
 
-import { ConfirmationDialog } from "./components/ConfirmationDialog";
-import { StatusPanel } from "./components/StatusPanel";
-import type { Route, StatusKind } from "./contracts";
+import { ProfileReviewView } from "./components/ProfileReviewView";
+import type { Route } from "./contracts";
+import type { ProfileToolClient } from "./profileClient";
 
 const navigation: Array<{ label: string; route: Route }> = [
   { route: "profile", label: "Profile" },
@@ -16,10 +16,12 @@ const routeCopy: Record<Route, string> = {
   applications: "Prepared applications remain distinct from approval and submission."
 };
 
-export function App() {
+interface AppProps {
+  profileClient?: ProfileToolClient;
+}
+
+export function App({ profileClient }: AppProps) {
   const [route, setRoute] = useState<Route>("profile");
-  const [status, setStatus] = useState<StatusKind>("ready");
-  const [confirmationOpen, setConfirmationOpen] = useState(false);
 
   return (
     <main className="widget-shell">
@@ -43,35 +45,16 @@ export function App() {
           </button>
         ))}
       </nav>
-      <StatusPanel detail="" kind={status} />
       <section aria-labelledby={`${route}-tab`} id={`${route}-panel`} role="tabpanel" tabIndex={-1}>
-        <h2>{navigation.find((item) => item.route === route)?.label}</h2>
-        <p>{routeCopy[route]}</p>
-        <div className="shell-actions">
-          <button onClick={() => setStatus("loading")} type="button">
-            Show loading state
-          </button>
-          <button onClick={() => setStatus("empty")} type="button">
-            Show empty state
-          </button>
-          <button onClick={() => setStatus("error")} type="button">
-            Show error state
-          </button>
-          <button onClick={() => setStatus("ready")} type="button">
-            Clear status
-          </button>
-        </div>
-        <button className="confirmation-pattern" onClick={() => setConfirmationOpen(true)} type="button">
-          Preview confirmation pattern
-        </button>
+        {route === "profile" ? (
+          <ProfileReviewView client={profileClient} />
+        ) : (
+          <>
+            <h2>{navigation.find((item) => item.route === route)?.label}</h2>
+            <p>{routeCopy[route]}</p>
+          </>
+        )}
       </section>
-      <ConfirmationDialog
-        description="This shell preview does not perform an API call or approve an application."
-        onCancel={() => setConfirmationOpen(false)}
-        onConfirm={() => setConfirmationOpen(false)}
-        open={confirmationOpen}
-        title="Confirm local review"
-      />
     </main>
   );
 }

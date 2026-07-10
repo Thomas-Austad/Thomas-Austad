@@ -1,6 +1,7 @@
 import pytest
 
 from app import mcp_server
+from app.models.schemas import ProfileCorrectionRequest
 
 
 def test_widget_resource_requires_built_assets(tmp_path, monkeypatch) -> None:
@@ -28,3 +29,19 @@ def test_widget_resource_csp_denies_external_domains() -> None:
     csp = mcp_server.WIDGET_RESOURCE_META["ui"]["csp"]
 
     assert csp == {"connectDomains": [], "frameDomains": [], "resourceDomains": []}
+
+
+def test_profile_correction_uses_the_widget_template() -> None:
+    tool = mcp_server.mcp._tool_manager.get_tool("correct_candidate_profile")
+
+    assert tool is not None
+    assert tool.meta == mcp_server.WIDGET_TEMPLATE_META
+
+
+async def test_profile_correction_requires_direct_confirmation() -> None:
+    with pytest.raises(ValueError, match="direct user confirmation"):
+        await mcp_server.correct_candidate_profile(
+            "candidate-1",
+            ProfileCorrectionRequest(headline="Corrected headline"),
+            confirmed_by_user=False,
+        )

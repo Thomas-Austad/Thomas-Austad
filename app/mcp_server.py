@@ -68,7 +68,7 @@ async def review_candidate_profile(candidate_id: str):
     return get_profile_review(candidate_id).model_dump(mode="json")
 
 
-@mcp.tool()
+@mcp.tool(meta=WIDGET_TEMPLATE_META)
 async def correct_candidate_profile(
     candidate_id: str,
     corrections: ProfileCorrectionRequest,

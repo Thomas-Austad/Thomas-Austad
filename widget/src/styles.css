@@ -60,7 +60,6 @@ h1 {
 }
 
 .section-nav,
-.shell-actions,
 .dialog-actions {
   display: flex;
   flex-wrap: wrap;
@@ -80,8 +79,54 @@ h1 {
   border-color: #b42318;
 }
 
-.confirmation-pattern {
-  margin-top: 1rem;
+.profile-view,
+.candidate-form,
+.correction-form,
+.profile-details {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.candidate-form,
+.correction-form {
+  border: 1px solid #d6dce5;
+  border-radius: 0.5rem;
+  padding: 1rem;
+}
+
+input,
+select,
+textarea {
+  border: 1px solid #7a8798;
+  border-radius: 0.35rem;
+  font: inherit;
+  max-width: 100%;
+  padding: 0.5rem;
+}
+
+textarea {
+  min-height: 6rem;
+  resize: vertical;
+}
+
+dl {
+  display: grid;
+  gap: 0.35rem;
+  grid-template-columns: max-content 1fr;
+  margin: 0;
+}
+
+dt {
+  font-weight: 700;
+}
+
+dd {
+  margin: 0;
+}
+
+ul {
+  margin: 0;
+  padding-left: 1.25rem;
 }
 
 .dialog-backdrop {
