@@ -18,6 +18,11 @@ docker compose up -d db
 python -m alembic upgrade head
 ```
 
+The local API is private: start it with `--host 127.0.0.1` and use the
+per-installation credential kept in the operating-system credential store. For
+headless local automation only, set a unique `LOCAL_ACCESS_TOKEN` with at least
+32 characters in `.env`; never commit that value.
+
 ## Day-to-day commands
 
 ```powershell

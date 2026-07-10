@@ -1,3 +1,4 @@
+import secrets
 import uuid
 from typing import Annotated
 
@@ -17,7 +18,11 @@ from app.services.document_service import (
     extract_resume_text,
     markdown_resume_to_docx,
 )
-from app.services.audit_service import record_approval_audit_event
+from app.services import local_auth_service
+from app.services.audit_service import (
+    record_approval_audit_event,
+    record_screening_confirmation_audit_event,
+)
 from app import store
 from app.config import settings
 from app.rate_limit import client_identifier, rate_limiter, route_rate_limit
@@ -67,6 +72,39 @@ async def enforce_rate_limits(request: Request, call_next):
         )
         if not allowed:
             return JSONResponse(status_code=429, content={"detail": "Rate limit exceeded"})
+    return await call_next(request)
+
+
+@app.middleware("http")
+async def require_local_authentication(request: Request, call_next):
+    if request.url.path == "/health":
+        return await call_next(request)
+
+    authorization = request.headers.get("authorization", "")
+    scheme, _, presented_token = authorization.partition(" ")
+    if scheme.lower() != "bearer" or not presented_token:
+        return JSONResponse(
+            status_code=401,
+            content={"detail": "Local authentication required"},
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    try:
+        expected_token = local_auth_service.get_local_access_token()
+    except local_auth_service.LocalCredentialUnavailable:
+        return JSONResponse(
+            status_code=503,
+            content={"detail": "Local authentication is temporarily unavailable"},
+        )
+
+    if not secrets.compare_digest(presented_token, expected_token):
+        return JSONResponse(
+            status_code=401,
+            content={"detail": "Local authentication required"},
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    request.state.actor_id = local_auth_service.LOCAL_ACTOR_ID
     return await call_next(request)
 
 
@@ -140,11 +178,22 @@ def approve_application(application_id: str, request: Request):
         raise HTTPException(404, "Application not found")
     if package.requires_user_input or package.unresolved_screening_questions:
         raise HTTPException(409, "Resolve required user inputs before approval")
-    package.status = "approved"
-    store.applications[application_id] = package
+    if package.status != "prepared":
+        raise HTTPException(409, "Only prepared applications can be approved")
     request_id = request.headers.get("x-request-id", str(uuid.uuid4()))
-    record_approval_audit_event(application_id, "approved", request_id)
-    return package
+    approved_package = package.model_copy(update={"status": "approved"})
+    store.applications[application_id] = approved_package
+    try:
+        record_approval_audit_event(
+            application_id,
+            "approved",
+            request_id,
+            request.state.actor_id,
+        )
+    except OSError as exc:
+        store.applications[application_id] = package
+        raise HTTPException(503, "Unable to record required audit receipt") from exc
+    return approved_package
 
 
 @app.post("/applications/{application_id}/screening-questions/resolve")
@@ -172,25 +221,36 @@ def resolve_screening_question(
     if review is None:
         raise HTTPException(404, "Unresolved screening question not found")
 
-    package.screening_answers[req.question] = req.answer
-    package.unresolved_screening_questions = [
+    updated_package = package.model_copy(deep=True)
+    updated_package.screening_answers[req.question] = req.answer
+    updated_package.unresolved_screening_questions = [
         unresolved
-        for unresolved in package.unresolved_screening_questions
+        for unresolved in updated_package.unresolved_screening_questions
         if unresolved.question != req.question
     ]
-    package.requires_user_input = [
-        required for required in package.requires_user_input if required != req.question
+    updated_package.requires_user_input = [
+        required for required in updated_package.requires_user_input if required != req.question
     ]
     request_id = request.headers.get("x-request-id", str(uuid.uuid4()))
-    package.confirmed_screening_answers.append(
+    updated_package.confirmed_screening_answers.append(
         ConfirmedScreeningAnswer(
             question=req.question,
             category=review.category,
             request_id=request_id,
         )
     )
-    store.applications[application_id] = package
-    return package
+    store.applications[application_id] = updated_package
+    try:
+        record_screening_confirmation_audit_event(
+            application_id,
+            "confirmed",
+            request_id,
+            request.state.actor_id,
+        )
+    except OSError as exc:
+        store.applications[application_id] = package
+        raise HTTPException(503, "Unable to record required audit receipt") from exc
+    return updated_package
 
 
 @app.get("/applications/{application_id}/resume.docx")

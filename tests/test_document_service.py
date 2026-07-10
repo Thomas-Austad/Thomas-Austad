@@ -14,6 +14,14 @@ from app.services.document_service import (
     markdown_resume_to_docx,
 )
 
+LOCAL_AUTH_HEADERS = {
+    "Authorization": "Bearer test-local-access-token-that-is-at-least-32-characters"
+}
+
+
+def local_client() -> TestClient:
+    return TestClient(app, headers=LOCAL_AUTH_HEADERS)
+
 
 def test_docx_generation():
     result = markdown_resume_to_docx("# Jane Doe\n## Experience\n- Improved throughput 20%")
@@ -95,7 +103,7 @@ def test_resume_extraction_rejects_oversized_content():
 def test_resume_extract_endpoint_accepts_docx():
     content = markdown_resume_to_docx("# Jane Doe\nBuilt Python APIs")
 
-    response = TestClient(app).post(
+    response = local_client().post(
         "/resumes/extract",
         files={
             "file": (
@@ -112,7 +120,7 @@ def test_resume_extract_endpoint_accepts_docx():
 
 
 def test_resume_extract_endpoint_rejects_unsupported_file():
-    response = TestClient(app).post(
+    response = local_client().post(
         "/resumes/extract",
         files={"file": ("resume.txt", b"plain text", "text/plain")},
     )

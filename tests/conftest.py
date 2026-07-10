@@ -3,6 +3,7 @@ import os
 import pytest
 
 os.environ["APP_ENV"] = "test"
+os.environ["LOCAL_ACCESS_TOKEN"] = "test-local-access-token-that-is-at-least-32-characters"
 
 from app import store
 from app.rate_limit import rate_limiter

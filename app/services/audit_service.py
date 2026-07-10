@@ -16,6 +16,7 @@ class AuditEvent(BaseModel):
     target_id: str
     result: str
     request_id: str
+    actor_id: str = "local_user"
     occurred_at: str = Field(default_factory=lambda: utc_now().isoformat())
 
 
@@ -30,7 +31,12 @@ class JsonlAuditLog:
             stream.write("\n")
 
 
-def record_approval_audit_event(application_id: str, result: str, request_id: str) -> None:
+def record_approval_audit_event(
+    application_id: str,
+    result: str,
+    request_id: str,
+    actor_id: str = "local_user",
+) -> None:
     JsonlAuditLog().record(
         AuditEvent(
             action="application.approve",
@@ -38,6 +44,25 @@ def record_approval_audit_event(application_id: str, result: str, request_id: st
             target_id=application_id,
             result=result,
             request_id=request_id,
+            actor_id=actor_id,
+        )
+    )
+
+
+def record_screening_confirmation_audit_event(
+    application_id: str,
+    result: str,
+    request_id: str,
+    actor_id: str = "local_user",
+) -> None:
+    JsonlAuditLog().record(
+        AuditEvent(
+            action="application.screening_confirmation",
+            target_type="application",
+            target_id=application_id,
+            result=result,
+            request_id=request_id,
+            actor_id=actor_id,
         )
     )
 

@@ -27,7 +27,7 @@ source .venv/bin/activate  # Windows: .venv\\Scripts\\activate
 pip install -e .[dev]
 docker compose up -d db
 alembic upgrade head
-uvicorn app.main:app --reload
+uvicorn app.main:app --host 127.0.0.1 --reload
 ```
 
 Health check: `http://localhost:8000/health`
@@ -38,7 +38,7 @@ Run MCP server:
 python -m app.mcp_server
 ```
 
-Expose the MCP endpoint through an HTTPS development tunnel, then add it in ChatGPT under developer/app connector settings.
+MCP uses local stdio. Do not expose it through a development tunnel or public URL.
 
 ## Typical workflow
 
@@ -56,7 +56,21 @@ Expose the MCP endpoint through an HTTPS development tunnel, then add it in Chat
 This MVP prepares and tracks applications. Direct submission must be implemented only through approved ATS/job-board APIs or a user-controlled browser assistant. Never guess legally meaningful screening answers or submit without explicit approval.
 
 API datetime fields are serialized as ISO 8601 timestamps with explicit UTC offsets.
-Sensitive screening questions are surfaced in `unresolved_screening_questions`, removed from generated screening answers, and block approval until resolved. Successful approvals write non-sensitive JSONL audit receipts to `AUDIT_LOG_PATH` (default `var/audit/events.jsonl`).
+Sensitive screening questions are surfaced in `unresolved_screening_questions`, removed from generated screening answers, and block approval until resolved. Successful approvals and direct sensitive-screening confirmations write non-sensitive JSONL audit receipts to `AUDIT_LOG_PATH` (default `var/audit/events.jsonl`).
+
+## Local-only security model
+
+This is a single-user, local-first application. The API is intended to bind only
+to a loopback address and requires a bearer credential for every private route.
+On a normal desktop installation, the application creates and stores that
+credential in the operating system credential store; `LOCAL_ACCESS_TOKEN` is a
+headless or automation fallback and must be at least 32 characters. The local
+operating-system user is the sole application principal, and no hosted accounts,
+sharing, or remote MCP transport are supported.
+
+This model relies on the security of the user's operating-system account and
+disk encryption. It cannot protect information from an administrator, malware,
+or another process running as that same user.
 
 ## Container safety
 
@@ -65,10 +79,8 @@ bind to loopback so they are not exposed to the local network. Before using the
 stack, copy `.env.example` to `.env`, choose a unique local database password,
 and set `DATABASE_URL` to the matching local PostgreSQL connection URL.
 
-Do not deploy this Compose file directly to production. Use a managed database
-that is not publicly reachable, inject secrets through an approved secret
-manager, run migrations as a controlled deployment step, and expose only the
-API through an HTTPS-capable reverse proxy or platform ingress.
+Do not deploy this Compose file as a hosted service. This project is designed
+to run on the user's own computer with loopback-only access.
 
 ## Development workflow
 

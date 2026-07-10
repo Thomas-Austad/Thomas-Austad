@@ -41,4 +41,4 @@ async def prepare_job_application(candidate_id: str, job_id: str, screening_ques
 
 
 if __name__ == "__main__":
-    mcp.run(transport="streamable-http")
+    mcp.run(transport="stdio")

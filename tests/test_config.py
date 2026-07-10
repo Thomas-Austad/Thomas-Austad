@@ -52,3 +52,17 @@ def test_api_rate_limit_defaults_are_enabled_and_bounded() -> None:
 def test_api_rate_limits_must_be_positive() -> None:
     with pytest.raises(ValidationError, match="greater than 0"):
         Settings(api_model_rate_limit=0, _env_file=None)
+
+
+@pytest.mark.parametrize(
+    "public_base_url",
+    ["https://example.com", "http://0.0.0.0:8000", "http://192.168.1.10:8000"],
+)
+def test_public_base_url_must_use_loopback(public_base_url: str) -> None:
+    with pytest.raises(ValidationError, match="loopback"):
+        Settings(public_base_url=public_base_url, _env_file=None)
+
+
+def test_configured_local_access_token_must_be_long_enough() -> None:
+    with pytest.raises(ValidationError, match="LOCAL_ACCESS_TOKEN"):
+        Settings(local_access_token="too-short", _env_file=None)

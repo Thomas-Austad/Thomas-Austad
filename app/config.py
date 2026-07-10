@@ -1,4 +1,5 @@
 from typing import Literal
+from urllib.parse import urlparse
 
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -25,8 +26,9 @@ class Settings(BaseSettings):
     api_document_rate_limit: int = Field(default=30, gt=0)
     api_write_rate_limit: int = Field(default=60, gt=0)
     database_url: str = DEFAULT_DATABASE_URL
-    public_base_url: str = "http://localhost:8000"
+    public_base_url: str = "http://127.0.0.1:8000"
     audit_log_path: str = "var/audit/events.jsonl"
+    local_access_token: str = Field(default="", repr=False)
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
@@ -37,6 +39,21 @@ class Settings(BaseSettings):
             raise ValueError("DATABASE_URL is required")
         if not value.startswith(POSTGRES_SCHEMES):
             raise ValueError("DATABASE_URL must use PostgreSQL, for example postgresql+psycopg://...")
+        return value
+
+    @field_validator("local_access_token")
+    @classmethod
+    def validate_local_access_token(cls, value: str) -> str:
+        if value and len(value) < 32:
+            raise ValueError("LOCAL_ACCESS_TOKEN must be at least 32 characters when configured")
+        return value
+
+    @field_validator("public_base_url")
+    @classmethod
+    def require_loopback_public_base_url(cls, value: str) -> str:
+        parsed = urlparse(value)
+        if parsed.scheme != "http" or parsed.hostname not in {"localhost", "127.0.0.1", "::1"}:
+            raise ValueError("PUBLIC_BASE_URL must use an HTTP loopback address")
         return value
 
     @model_validator(mode="after")
