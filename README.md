@@ -20,7 +20,8 @@ A personal-use, ChatGPT-native AI career platform MVP.
 
 ```bash
 cp .env.example .env
-# Add OPENAI_API_KEY
+# Add OPENAI_API_KEY and a unique POSTGRES_PASSWORD.
+# Set DATABASE_URL to the matching local PostgreSQL URL before running locally.
 python -m venv .venv
 source .venv/bin/activate  # Windows: .venv\\Scripts\\activate
 pip install -e .[dev]
@@ -56,6 +57,18 @@ This MVP prepares and tracks applications. Direct submission must be implemented
 
 API datetime fields are serialized as ISO 8601 timestamps with explicit UTC offsets.
 Sensitive screening questions are surfaced in `unresolved_screening_questions`, removed from generated screening answers, and block approval until resolved. Successful approvals write non-sensitive JSONL audit receipts to `AUDIT_LOG_PATH` (default `var/audit/events.jsonl`).
+
+## Container safety
+
+`docker-compose.yml` is for local development only. Its API and database ports
+bind to loopback so they are not exposed to the local network. Before using the
+stack, copy `.env.example` to `.env`, choose a unique local database password,
+and set `DATABASE_URL` to the matching local PostgreSQL connection URL.
+
+Do not deploy this Compose file directly to production. Use a managed database
+that is not publicly reachable, inject secrets through an approved secret
+manager, run migrations as a controlled deployment step, and expose only the
+API through an HTTPS-capable reverse proxy or platform ingress.
 
 ## Development workflow
 

@@ -32,6 +32,27 @@ requests targeting `main`.
 
 Keep secrets in environment variables or `.env`; do not commit credentials.
 
+## Container deployment
+
+The checked-in Compose file supports local development only. It binds the API
+and database ports to loopback, and it requires a user-chosen
+`POSTGRES_PASSWORD`; never expose the database port in production.
+
+For a production deployment, build the pinned image, run it as its included
+non-root user, inject configuration through a secret manager, apply migrations
+as a controlled deployment step, and expose only the API through HTTPS. Verify
+the container health check after startup and allow at least 30 seconds for
+graceful Uvicorn shutdown before replacing or stopping a replica.
+
+To smoke-test an image on a Docker-enabled host:
+
+```powershell
+docker build --tag talent-advisor-platform:smoke .
+docker run --detach --rm --name talent-advisor-smoke --publish 127.0.0.1:18000:8000 talent-advisor-platform:smoke
+Invoke-WebRequest http://127.0.0.1:18000/health
+docker stop talent-advisor-smoke
+```
+
 The built-in limiter is intentionally coarse and process-local. Use an
 authenticated, shared rate-limit service for production deployments with
 multiple workers or hosts.
