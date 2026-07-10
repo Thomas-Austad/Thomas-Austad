@@ -2,7 +2,7 @@ from fastapi.testclient import TestClient
 
 from app import store
 from app.main import app
-from app.models.schemas import JobListing
+from app.models.schemas import JobListing, ScreeningQuestionReview
 from app.services.audit_service import read_audit_events
 
 
@@ -133,6 +133,112 @@ def test_approval_requires_resolved_user_input(sample_application, tmp_path, mon
     assert response.json()["detail"] == "Resolve required user inputs before approval"
     assert store.applications[sample_application.application_id].status == "prepared"
     assert read_audit_events(tmp_path / "audit.jsonl") == []
+
+
+def test_approval_requires_resolved_sensitive_screening_questions(
+    sample_application,
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setattr("app.config.settings.audit_log_path", str(tmp_path / "audit.jsonl"))
+    sample_application.unresolved_screening_questions = [
+        ScreeningQuestionReview(
+            question="Are you authorized to work in the United States?",
+            category="work_authorization",
+            reason="Work authorization answers require direct user confirmation.",
+        )
+    ]
+    store.applications[sample_application.application_id] = sample_application
+
+    response = TestClient(app).post(f"/applications/{sample_application.application_id}/approve")
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "Resolve required user inputs before approval"
+    assert store.applications[sample_application.application_id].status == "prepared"
+    assert read_audit_events(tmp_path / "audit.jsonl") == []
+
+
+def test_sensitive_screening_question_resolution_requires_direct_confirmation(
+    sample_application,
+):
+    question = "Are you authorized to work in the United States?"
+    sample_application.requires_user_input = [question]
+    sample_application.unresolved_screening_questions = [
+        ScreeningQuestionReview(
+            question=question,
+            category="work_authorization",
+            reason="Work authorization answers require direct user confirmation.",
+        )
+    ]
+    store.applications[sample_application.application_id] = sample_application
+
+    response = TestClient(app).post(
+        f"/applications/{sample_application.application_id}/screening-questions/resolve",
+        json={
+            "question": question,
+            "answer": "Yes",
+            "confirmed_by_user": False,
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == (
+        "Sensitive screening answers require direct user confirmation"
+    )
+    stored = store.applications[sample_application.application_id]
+    assert stored.screening_answers == {}
+    assert stored.requires_user_input == [question]
+    assert len(stored.unresolved_screening_questions) == 1
+
+
+def test_resolving_sensitive_screening_question_unblocks_approval(
+    sample_application,
+    tmp_path,
+    monkeypatch,
+):
+    audit_path = tmp_path / "audit.jsonl"
+    monkeypatch.setattr("app.config.settings.audit_log_path", str(audit_path))
+    question = "Are you authorized to work in the United States?"
+    sample_application.requires_user_input = [question]
+    sample_application.unresolved_screening_questions = [
+        ScreeningQuestionReview(
+            question=question,
+            category="work_authorization",
+            reason="Work authorization answers require direct user confirmation.",
+        )
+    ]
+    store.applications[sample_application.application_id] = sample_application
+    client = TestClient(app)
+
+    resolution_response = client.post(
+        f"/applications/{sample_application.application_id}/screening-questions/resolve",
+        json={
+            "question": question,
+            "answer": "Yes",
+            "confirmed_by_user": True,
+        },
+        headers={"x-request-id": "resolve-request-123"},
+    )
+    approval_response = client.post(
+        f"/applications/{sample_application.application_id}/approve",
+        headers={"x-request-id": "approve-request-123"},
+    )
+
+    assert resolution_response.status_code == 200
+    resolution_body = resolution_response.json()
+    assert resolution_body["screening_answers"] == {question: "Yes"}
+    assert resolution_body["requires_user_input"] == []
+    assert resolution_body["unresolved_screening_questions"] == []
+    assert resolution_body["confirmed_screening_answers"][0]["question"] == question
+    assert resolution_body["confirmed_screening_answers"][0]["category"] == "work_authorization"
+    assert resolution_body["confirmed_screening_answers"][0]["request_id"] == (
+        "resolve-request-123"
+    )
+    assert approval_response.status_code == 200
+    assert approval_response.json()["status"] == "approved"
+    events = read_audit_events(audit_path)
+    assert len(events) == 1
+    assert events[0].request_id == "approve-request-123"
 
 
 def test_approval_records_non_sensitive_audit_event(sample_application, tmp_path, monkeypatch):

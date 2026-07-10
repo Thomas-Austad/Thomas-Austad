@@ -117,18 +117,28 @@ class JobMatch(BaseModel):
     recommendation: Literal["apply", "consider", "skip"]
 
 
+ScreeningQuestionCategory = Literal[
+    "personal",
+    "legal",
+    "demographic",
+    "disability",
+    "criminal_history",
+    "salary_history",
+    "work_authorization",
+]
+
+
 class ScreeningQuestionReview(BaseModel):
     question: str
-    category: Literal[
-        "personal",
-        "legal",
-        "demographic",
-        "disability",
-        "criminal_history",
-        "salary_history",
-        "work_authorization",
-    ]
+    category: ScreeningQuestionCategory
     reason: str
+
+
+class ConfirmedScreeningAnswer(BaseModel):
+    question: str
+    category: ScreeningQuestionCategory
+    confirmed_at: datetime = Field(default_factory=utc_now)
+    request_id: str
 
 
 class ApplicationPackage(BaseModel):
@@ -141,6 +151,7 @@ class ApplicationPackage(BaseModel):
     factual_warnings: list[str] = []
     requires_user_input: list[str] = []
     unresolved_screening_questions: list[ScreeningQuestionReview] = []
+    confirmed_screening_answers: list[ConfirmedScreeningAnswer] = []
     status: Literal["prepared", "approved", "submitted", "failed"] = "prepared"
 
 

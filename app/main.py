@@ -2,10 +2,12 @@ import uuid
 
 from fastapi import FastAPI, File, HTTPException, Request, Response, UploadFile
 from pydantic import BaseModel
+from pydantic import Field
 from app.agents.profile_agent import CandidateProfileAgent
 from app.agents.compensation_agent import CompensationAgent
 from app.agents.match_agent import MatchAgent
 from app.agents.application_agent import ApplicationAgent
+from app.models.schemas import ConfirmedScreeningAnswer
 from app.services.job_service import JobService
 from app.services.document_service import (
     MAX_RESUME_UPLOAD_BYTES,
@@ -36,6 +38,12 @@ class ApplicationRequest(BaseModel):
     candidate_id: str
     job_id: str
     screening_questions: list[str] = []
+
+
+class ScreeningQuestionResolutionRequest(BaseModel):
+    question: str
+    answer: str = Field(min_length=1)
+    confirmed_by_user: bool = False
 
 
 @app.get("/health")
@@ -106,12 +114,58 @@ def approve_application(application_id: str, request: Request):
     package = store.applications.get(application_id)
     if not package:
         raise HTTPException(404, "Application not found")
-    if package.requires_user_input:
+    if package.requires_user_input or package.unresolved_screening_questions:
         raise HTTPException(409, "Resolve required user inputs before approval")
     package.status = "approved"
     store.applications[application_id] = package
     request_id = request.headers.get("x-request-id", str(uuid.uuid4()))
     record_approval_audit_event(application_id, "approved", request_id)
+    return package
+
+
+@app.post("/applications/{application_id}/screening-questions/resolve")
+def resolve_screening_question(
+    application_id: str,
+    req: ScreeningQuestionResolutionRequest,
+    request: Request,
+):
+    package = store.applications.get(application_id)
+    if not package:
+        raise HTTPException(404, "Application not found")
+    if package.status != "prepared":
+        raise HTTPException(409, "Screening questions can only be resolved before approval")
+    if not req.confirmed_by_user:
+        raise HTTPException(400, "Sensitive screening answers require direct user confirmation")
+
+    review = next(
+        (
+            unresolved
+            for unresolved in package.unresolved_screening_questions
+            if unresolved.question == req.question
+        ),
+        None,
+    )
+    if review is None:
+        raise HTTPException(404, "Unresolved screening question not found")
+
+    package.screening_answers[req.question] = req.answer
+    package.unresolved_screening_questions = [
+        unresolved
+        for unresolved in package.unresolved_screening_questions
+        if unresolved.question != req.question
+    ]
+    package.requires_user_input = [
+        required for required in package.requires_user_input if required != req.question
+    ]
+    request_id = request.headers.get("x-request-id", str(uuid.uuid4()))
+    package.confirmed_screening_answers.append(
+        ConfirmedScreeningAnswer(
+            question=req.question,
+            category=review.category,
+            request_id=request_id,
+        )
+    )
+    store.applications[application_id] = package
     return package
 
 
