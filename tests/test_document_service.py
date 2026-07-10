@@ -1,10 +1,12 @@
 from io import BytesIO
+from zipfile import ZIP_DEFLATED, ZipFile
 
 import pytest
 from docx import Document
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.services import document_service
 from app.services.document_service import (
     DOCX_CONTENT_TYPE,
     MAX_RESUME_UPLOAD_BYTES,
@@ -100,6 +102,45 @@ def test_resume_extraction_rejects_oversized_content():
         extract_resume_text(b"x" * (MAX_RESUME_UPLOAD_BYTES + 1), "resume.pdf")
 
 
+def test_docx_resume_extraction_rejects_excessive_archive_members(monkeypatch):
+    monkeypatch.setattr(document_service, "MAX_DOCX_ARCHIVE_MEMBERS", 1)
+    content = _docx_archive({"word/document.xml": "<document />", "extra.xml": "<extra />"})
+
+    with pytest.raises(ResumeExtractionError, match="too many files"):
+        extract_resume_text(content, "resume.docx")
+
+
+def test_docx_resume_extraction_rejects_excessive_uncompressed_content(monkeypatch):
+    monkeypatch.setattr(document_service, "MAX_DOCX_UNCOMPRESSED_BYTES", 8)
+    content = _docx_archive({"word/document.xml": "x" * 9})
+
+    with pytest.raises(ResumeExtractionError, match="too large after decompression"):
+        extract_resume_text(content, "resume.docx")
+
+
+def test_docx_resume_extraction_rejects_excessive_compression_ratio(monkeypatch):
+    monkeypatch.setattr(document_service, "MAX_DOCX_COMPRESSION_RATIO", 2)
+    content = _docx_archive({"word/document.xml": "x" * 1_000})
+
+    with pytest.raises(ResumeExtractionError, match="safe compression ratio"):
+        extract_resume_text(content, "resume.docx")
+
+
+def test_docx_resume_extraction_rejects_unsafe_archive_path():
+    content = _docx_archive({"../word/document.xml": "<document />"})
+
+    with pytest.raises(ResumeExtractionError, match="unsafe file path"):
+        extract_resume_text(content, "resume.docx")
+
+
+def _docx_archive(entries: dict[str, str]) -> bytes:
+    stream = BytesIO()
+    with ZipFile(stream, "w", ZIP_DEFLATED) as archive:
+        for filename, value in entries.items():
+            archive.writestr(filename, value)
+    return stream.getvalue()
+
+
 def test_resume_extract_endpoint_accepts_docx():
     content = markdown_resume_to_docx("# Jane Doe\nBuilt Python APIs")
 
@@ -127,3 +168,16 @@ def test_resume_extract_endpoint_rejects_unsupported_file():
 
     assert response.status_code == 400
     assert response.json()["detail"] == "Unsupported resume file type"
+
+
+def test_resume_extract_endpoint_rejects_unsafe_docx_archive(monkeypatch):
+    monkeypatch.setattr(document_service, "MAX_DOCX_ARCHIVE_MEMBERS", 1)
+    content = _docx_archive({"word/document.xml": "<document />", "extra.xml": "<extra />"})
+
+    response = local_client().post(
+        "/resumes/extract",
+        files={"file": ("resume.docx", content, DOCX_CONTENT_TYPE)},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "DOCX archive contains too many files"
