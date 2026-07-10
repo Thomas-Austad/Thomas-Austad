@@ -1,4 +1,7 @@
 from fastapi.testclient import TestClient
+import io
+import json
+import zipfile
 
 from app import store
 from app.main import app
@@ -12,6 +15,37 @@ LOCAL_AUTH_HEADERS = {
 
 def local_client() -> TestClient:
     return TestClient(app, headers=LOCAL_AUTH_HEADERS)
+
+
+def test_confirmed_profile_export_and_deletion_are_audited(sample_profile, tmp_path, monkeypatch):
+    audit_path = tmp_path / "audit.jsonl"
+    monkeypatch.setattr("app.config.settings.audit_log_path", str(audit_path))
+    store.profiles[sample_profile.candidate_id] = sample_profile
+    client = local_client()
+
+    rejected = client.post(f"/profiles/{sample_profile.candidate_id}/export", json={})
+    exported = client.post(
+        f"/profiles/{sample_profile.candidate_id}/export",
+        json={"confirmed_by_user": True},
+    )
+    deleted = client.request(
+        "DELETE",
+        f"/profiles/{sample_profile.candidate_id}",
+        json={"confirmed_by_user": True},
+    )
+
+    assert rejected.status_code == 400
+    assert exported.status_code == 200
+    with zipfile.ZipFile(io.BytesIO(exported.content)) as bundle:
+        exported_review = json.loads(bundle.read("profile-review.json"))
+    assert exported_review["profile"]["candidate_id"] == sample_profile.candidate_id
+    assert deleted.json() == {"status": "deleted"}
+    assert store.profiles.get(sample_profile.candidate_id) is None
+    assert [event.result for event in read_audit_events(audit_path)] == [
+        "exported",
+        "requested",
+        "deleted",
+    ]
 
 
 def test_profile_review_and_correction_preserve_provenance_and_update_downstream_use(

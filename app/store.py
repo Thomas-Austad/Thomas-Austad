@@ -101,6 +101,18 @@ class InMemoryStore:
         self.matches: dict[tuple[str, str], JobMatch] = {}
         self.applications: dict[str, ApplicationPackage] = {}
 
+    def delete_profile(self, candidate_id: str) -> bool:
+        if candidate_id not in self.profiles:
+            return False
+        del self.profiles[candidate_id]
+        self.evidence.records.pop(candidate_id, None)
+        self.profile_corrections.corrections.pop(candidate_id, None)
+        for key in [key for key, value in self.matches.items() if value.candidate_id == candidate_id]:
+            del self.matches[key]
+        for key in [key for key, value in self.applications.items() if value.candidate_id == candidate_id]:
+            del self.applications[key]
+        return True
+
 
 if os.getenv("APP_ENV") == "test":
     _store = InMemoryStore()

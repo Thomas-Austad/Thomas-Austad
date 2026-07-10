@@ -85,6 +85,25 @@ def record_profile_correction_audit_event(
     )
 
 
+def record_profile_data_action_audit_event(
+    action: str,
+    candidate_id: str,
+    result: str,
+    request_id: str,
+    actor_id: str = "local_user",
+) -> None:
+    JsonlAuditLog().record(
+        AuditEvent(
+            action=action,
+            target_type="candidate_profile",
+            target_id=candidate_id,
+            result=result,
+            request_id=request_id,
+            actor_id=actor_id,
+        )
+    )
+
+
 def read_audit_events(path: str | Path) -> list[AuditEvent]:
     audit_path = Path(path)
     if not audit_path.exists():

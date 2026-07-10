@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     public_base_url: str = "http://127.0.0.1:8000"
     audit_log_path: str = "var/audit/events.jsonl"
     local_access_token: str = Field(default="", repr=False)
+    data_encryption_key_version: int = Field(default=1, ge=1)
+    require_encrypted_storage: bool = False
+    profile_retention_days: int = Field(default=730, ge=1)
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

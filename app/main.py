@@ -1,5 +1,9 @@
 import secrets
 import uuid
+import io
+import json
+import zipfile
+from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
 from fastapi import FastAPI, File, HTTPException, Request, Response, UploadFile
@@ -26,6 +30,7 @@ from app.services import local_auth_service
 from app.services.audit_service import (
     record_approval_audit_event,
     record_profile_correction_audit_event,
+    record_profile_data_action_audit_event,
     record_screening_confirmation_audit_event,
 )
 from app import store
@@ -62,6 +67,10 @@ class ApplicationRequest(BaseModel):
 class ScreeningQuestionResolutionRequest(BaseModel):
     question: ScreeningQuestionText
     answer: str = Field(min_length=1, max_length=5_000)
+    confirmed_by_user: bool = False
+
+
+class ProfileDataActionRequest(BaseModel):
     confirmed_by_user: bool = False
 
 
@@ -178,6 +187,129 @@ def correct_profile(
         request_id,
         request.state.actor_id,
     )
+
+
+@app.post("/profiles/{candidate_id}/export")
+def export_profile(
+    candidate_id: ShortText,
+    confirmation: ProfileDataActionRequest,
+    request: Request,
+):
+    if not confirmation.confirmed_by_user:
+        raise HTTPException(400, "Profile export requires direct user confirmation")
+    review = get_profile_review(candidate_id)
+    request_id = request.headers.get("x-request-id", str(uuid.uuid4()))
+    try:
+        record_profile_data_action_audit_event(
+            "profile.export",
+            candidate_id,
+            "exported",
+            request_id,
+            request.state.actor_id,
+        )
+    except OSError as exc:
+        raise HTTPException(503, "Unable to record required audit receipt") from exc
+    archive = io.BytesIO()
+    with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as bundle:
+        bundle.writestr(
+            "profile-review.json",
+            json.dumps(review.model_dump(mode="json"), ensure_ascii=False, indent=2),
+        )
+    return Response(
+        archive.getvalue(),
+        media_type="application/zip",
+        headers={"Content-Disposition": 'attachment; filename="talent-advisor-profile-export.zip"'},
+    )
+
+
+@app.delete("/profiles/{candidate_id}")
+def delete_profile(
+    candidate_id: ShortText,
+    confirmation: ProfileDataActionRequest,
+    request: Request,
+) -> dict[str, str]:
+    if not confirmation.confirmed_by_user:
+        raise HTTPException(400, "Profile deletion requires direct user confirmation")
+    if store.profiles.get(candidate_id) is None:
+        raise HTTPException(404, "Candidate profile not found")
+    request_id = request.headers.get("x-request-id", str(uuid.uuid4()))
+    try:
+        record_profile_data_action_audit_event(
+            "profile.delete",
+            candidate_id,
+            "requested",
+            request_id,
+            request.state.actor_id,
+        )
+    except OSError as exc:
+        raise HTTPException(503, "Unable to record required audit receipt") from exc
+    deleted = (
+        store._store.delete_profile(candidate_id)
+        if hasattr(store._store, "delete_profile")
+        else store.profiles.delete(candidate_id)
+    )
+    if not deleted:
+        raise HTTPException(404, "Candidate profile not found")
+    try:
+        record_profile_data_action_audit_event(
+            "profile.delete",
+            candidate_id,
+            "deleted",
+            request_id,
+            request.state.actor_id,
+        )
+    except OSError as exc:
+        raise HTTPException(503, "Profile deletion completed but audit finalization failed") from exc
+    return {"status": "deleted"}
+
+
+@app.get("/privacy/retention")
+def retention_review() -> dict:
+    cutoff = datetime.now(UTC) - timedelta(days=settings.profile_retention_days)
+    due_candidate_ids = [
+        profile.candidate_id
+        for profile in store.profiles.values()
+        if profile.generated_at < cutoff
+    ]
+    return {
+        "profile_retention_days": settings.profile_retention_days,
+        "due_candidate_ids": due_candidate_ids,
+    }
+
+
+@app.post("/privacy/retention/purge")
+def purge_due_profiles(
+    confirmation: ProfileDataActionRequest,
+    request: Request,
+) -> dict:
+    if not confirmation.confirmed_by_user:
+        raise HTTPException(400, "Retention purge requires direct user confirmation")
+    due_candidate_ids = retention_review()["due_candidate_ids"]
+    request_id = request.headers.get("x-request-id", str(uuid.uuid4()))
+    deleted_candidate_ids: list[str] = []
+    for candidate_id in due_candidate_ids:
+        record_profile_data_action_audit_event(
+            "profile.retention_purge",
+            candidate_id,
+            "requested",
+            request_id,
+            request.state.actor_id,
+        )
+        deleted = (
+            store._store.delete_profile(candidate_id)
+            if hasattr(store._store, "delete_profile")
+            else store.profiles.delete(candidate_id)
+        )
+        if deleted:
+            deleted_candidate_ids.append(candidate_id)
+            record_profile_data_action_audit_event(
+                "profile.retention_purge",
+                candidate_id,
+                "deleted",
+                request_id,
+                request.state.actor_id,
+            )
+    return {"deleted_candidate_ids": deleted_candidate_ids}
 
 
 @app.post("/resumes/extract")

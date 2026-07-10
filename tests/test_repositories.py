@@ -284,3 +284,18 @@ def test_profile_corrections_are_durable_and_distinct_from_source_evidence(sampl
     reloaded_store = create_repository_store(engine)
     assert reloaded_store.profiles[source_profile.candidate_id].headline == "Principal platform engineer"
     assert len(reloaded_store.profile_corrections.for_candidate(source_profile.candidate_id)) == 1
+
+
+def test_sensitive_repository_payloads_are_not_stored_as_plaintext(sample_profile) -> None:
+    engine = sa.create_engine("sqlite+pysqlite:///:memory:", future=True)
+    metadata.create_all(engine)
+    store = create_repository_store(engine)
+    private_profile = sample_profile.model_copy(update={"headline": "Private career detail"})
+
+    store.profiles[private_profile.candidate_id] = private_profile
+
+    with engine.begin() as connection:
+        stored = connection.scalar(sa.select(metadata.tables["candidate_profiles"].c.profile))
+
+    assert "Private career detail" not in str(stored)
+    assert set(stored) == {"version", "key_version", "nonce", "ciphertext"}
