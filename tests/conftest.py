@@ -22,12 +22,16 @@ from app.models.schemas import (
 def clear_store():
     rate_limiter.clear()
     store.profiles.clear()
+    store.evidence.clear()
+    store.profile_corrections.clear()
     store.jobs.clear()
     store.matches.clear()
     store.applications.clear()
     yield
     rate_limiter.clear()
     store.profiles.clear()
+    store.evidence.clear()
+    store.profile_corrections.clear()
     store.jobs.clear()
     store.matches.clear()
     store.applications.clear()

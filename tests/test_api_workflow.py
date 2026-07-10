@@ -2,7 +2,7 @@ from fastapi.testclient import TestClient
 
 from app import store
 from app.main import app
-from app.models.schemas import JobListing, ScreeningQuestionReview
+from app.models.schemas import Evidence, JobListing, ScreeningQuestionReview, Skill
 from app.services.audit_service import read_audit_events
 
 LOCAL_AUTH_HEADERS = {
@@ -12,6 +12,106 @@ LOCAL_AUTH_HEADERS = {
 
 def local_client() -> TestClient:
     return TestClient(app, headers=LOCAL_AUTH_HEADERS)
+
+
+def test_profile_review_and_correction_preserve_provenance_and_update_downstream_use(
+    monkeypatch,
+    sample_application,
+    sample_job,
+    sample_profile,
+    tmp_path,
+):
+    profile = sample_profile.model_copy(
+        update={
+            "skills": [
+                Skill(
+                    name="Python",
+                    proficiency=0.9,
+                    evidence=[
+                        Evidence(
+                            source="resume",
+                            text="Built Python APIs.",
+                            confidence=0.9,
+                        )
+                    ],
+                )
+            ]
+        }
+    )
+    store.profiles[profile.candidate_id] = profile
+    store.jobs[sample_job.job_id] = sample_job
+    monkeypatch.setattr("app.config.settings.audit_log_path", str(tmp_path / "audit.jsonl"))
+
+    async def application_prepare(self, received_profile, job, screening_questions):
+        assert received_profile.headline == "Principal platform engineer"
+        assert job == sample_job
+        assert screening_questions == []
+        return sample_application
+
+    monkeypatch.setattr("app.services.openai_service.OpenAIService.__init__", lambda self: None)
+    monkeypatch.setattr("app.main.ApplicationAgent.prepare", application_prepare)
+    client = local_client()
+
+    initial_review = client.get(f"/profiles/{profile.candidate_id}/review")
+    correction = client.patch(
+        f"/profiles/{profile.candidate_id}",
+        json={
+            "headline": "Principal platform engineer",
+            "preferences": {"remote_preference": "remote"},
+        },
+        headers={"x-request-id": "profile-correction-123"},
+    )
+    prepared = client.post(
+        "/applications/prepare",
+        json={"candidate_id": profile.candidate_id, "job_id": sample_job.job_id},
+    )
+
+    assert initial_review.status_code == 200
+    assert initial_review.json()["evidence"][0]["text"] == "Built Python APIs."
+    assert correction.status_code == 200
+    body = correction.json()
+    assert body["profile"]["headline"] == "Principal platform engineer"
+    assert {record["field"] for record in body["corrections"]} == {"headline", "preferences"}
+    assert body["evidence"][0]["text"] == "Built Python APIs."
+    assert prepared.status_code == 200
+    events = read_audit_events(tmp_path / "audit.jsonl")
+    assert len(events) == 1
+    assert events[0].action == "profile.correct"
+    assert events[0].target_id == profile.candidate_id
+    assert "Principal platform engineer" not in (tmp_path / "audit.jsonl").read_text(encoding="utf-8")
+
+
+def test_profile_correction_rejects_empty_or_unknown_updates(sample_profile):
+    store.profiles[sample_profile.candidate_id] = sample_profile
+    client = local_client()
+
+    empty = client.patch(f"/profiles/{sample_profile.candidate_id}", json={})
+    missing = client.patch("/profiles/missing", json={"headline": "Updated headline"})
+
+    assert empty.status_code == 400
+    assert empty.json()["detail"] == "At least one profile correction is required"
+    assert missing.status_code == 404
+
+
+def test_profile_correction_reverts_when_audit_receipt_cannot_be_written(
+    monkeypatch,
+    sample_profile,
+):
+    store.profiles[sample_profile.candidate_id] = sample_profile
+
+    def fail_to_record(*args, **kwargs) -> None:
+        raise OSError("disk unavailable")
+
+    monkeypatch.setattr("app.main.record_profile_correction_audit_event", fail_to_record)
+
+    response = local_client().patch(
+        f"/profiles/{sample_profile.candidate_id}",
+        json={"headline": "Updated headline"},
+    )
+
+    assert response.status_code == 503
+    assert store.profiles[sample_profile.candidate_id].headline == sample_profile.headline
+    assert store.profile_corrections.for_candidate(sample_profile.candidate_id) == []
 
 
 def test_core_api_workflow_uses_stored_state(

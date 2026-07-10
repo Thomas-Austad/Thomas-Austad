@@ -43,13 +43,15 @@ MCP uses local stdio. Do not expose it through a development tunnel or public UR
 ## Typical workflow
 
 1. `POST /profiles`
-2. `POST /jobs/search`
-3. `POST /matches/{candidate_id}/{job_id}`
-4. `POST /compensation/{candidate_id}`
-5. `POST /applications/prepare`
-6. Resolve required user inputs
-7. `POST /applications/{application_id}/approve`
-8. Download `/applications/{application_id}/resume.docx`
+2. `GET /profiles/{candidate_id}/review`
+3. `PATCH /profiles/{candidate_id}` to save user corrections
+4. `POST /jobs/search`
+5. `POST /matches/{candidate_id}/{job_id}`
+6. `POST /compensation/{candidate_id}`
+7. `POST /applications/prepare`
+8. Resolve required user inputs
+9. `POST /applications/{application_id}/approve`
+10. Download `/applications/{application_id}/resume.docx`
 
 ## Important boundary
 

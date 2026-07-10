@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from typing import Literal
-from pydantic import BaseModel, Field, HttpUrl
+
+from pydantic import BaseModel, Field, HttpUrl, JsonValue
 
 
 def utc_now() -> datetime:
@@ -64,6 +65,52 @@ class CandidateProfile(BaseModel):
     preferences: CandidatePreferences = CandidatePreferences()
     ambiguities: list[str] = []
     generated_at: datetime = Field(default_factory=utc_now)
+
+
+ProfileCorrectionField = Literal[
+    "name",
+    "headline",
+    "current_level",
+    "primary_functions",
+    "skills",
+    "experience",
+    "education",
+    "certifications",
+    "preferences",
+    "ambiguities",
+]
+
+
+class ProfileCorrectionRequest(BaseModel):
+    """User-supplied replacements for selected candidate-profile fields."""
+
+    name: str | None = Field(default=None, min_length=1, max_length=256)
+    headline: str | None = Field(default=None, min_length=1, max_length=2_000)
+    current_level: str | None = Field(default=None, min_length=1, max_length=256)
+    primary_functions: list[str] | None = Field(default=None, max_length=50)
+    skills: list[Skill] | None = Field(default=None, max_length=200)
+    experience: list[WorkExperience] | None = Field(default=None, max_length=100)
+    education: list[str] | None = Field(default=None, max_length=100)
+    certifications: list[str] | None = Field(default=None, max_length=100)
+    preferences: CandidatePreferences | None = None
+    ambiguities: list[str] | None = Field(default=None, max_length=100)
+
+    def corrected_fields(self) -> set[ProfileCorrectionField]:
+        return set(self.model_fields_set)
+
+
+class ProfileCorrectionRecord(BaseModel):
+    correction_id: str
+    candidate_id: str
+    field: ProfileCorrectionField
+    value: JsonValue
+    corrected_at: datetime = Field(default_factory=utc_now)
+
+
+class ProfileReview(BaseModel):
+    profile: CandidateProfile
+    evidence: list[EvidenceRecord]
+    corrections: list[ProfileCorrectionRecord]
 
 
 class CompensationEstimate(BaseModel):

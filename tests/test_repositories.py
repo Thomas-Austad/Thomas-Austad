@@ -1,7 +1,13 @@
 import pytest
 import sqlalchemy as sa
 
-from app.models.schemas import Evidence, EvidenceRecord, Skill, WorkExperience
+from app.models.schemas import (
+    Evidence,
+    EvidenceRecord,
+    ProfileCorrectionRequest,
+    Skill,
+    WorkExperience,
+)
 from app.repositories import create_repository_store, metadata
 
 
@@ -234,3 +240,47 @@ def test_profile_evidence_replacement_rolls_back_on_constraint_failure(
     evidence = store.evidence.for_candidate(sample_profile.candidate_id)
     assert len(evidence) == 1
     assert evidence[0].text == "Stable evidence."
+
+
+def test_profile_corrections_are_durable_and_distinct_from_source_evidence(sample_profile) -> None:
+    engine = sa.create_engine("sqlite+pysqlite:///:memory:", future=True)
+    metadata.create_all(engine)
+    store = create_repository_store(engine)
+    source_profile = sample_profile.model_copy(
+        update={
+            "skills": [
+                Skill(
+                    name="Python",
+                    proficiency=0.9,
+                    evidence=[
+                        Evidence(
+                            source="resume",
+                            text="Built Python APIs.",
+                            confidence=0.9,
+                        )
+                    ],
+                )
+            ]
+        }
+    )
+    store.profiles[source_profile.candidate_id] = source_profile
+
+    applied = store.profile_corrections.apply(
+        source_profile.candidate_id,
+        ProfileCorrectionRequest(headline="Principal platform engineer"),
+    )
+
+    assert applied is not None
+    assert store.profiles[source_profile.candidate_id].headline == "Principal platform engineer"
+    assert store.profile_corrections.for_candidate(source_profile.candidate_id)[0].field == "headline"
+    assert store.profile_corrections.for_candidate(source_profile.candidate_id)[0].value == (
+        "Principal platform engineer"
+    )
+    assert store.evidence.for_candidate(source_profile.candidate_id)[0].text == "Built Python APIs."
+
+    regenerated_profile = source_profile.model_copy(update={"headline": "Generated headline"})
+    store.profiles[source_profile.candidate_id] = regenerated_profile
+
+    reloaded_store = create_repository_store(engine)
+    assert reloaded_store.profiles[source_profile.candidate_id].headline == "Principal platform engineer"
+    assert len(reloaded_store.profile_corrections.for_candidate(source_profile.candidate_id)) == 1

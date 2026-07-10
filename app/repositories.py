@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Iterator
+from dataclasses import dataclass
 from typing import Generic, TypeVar
 
 import sqlalchemy as sa
@@ -14,6 +15,8 @@ from app.models.schemas import (
     EvidenceRecord,
     JobListing,
     JobMatch,
+    ProfileCorrectionRecord,
+    ProfileCorrectionRequest,
 )
 
 metadata = sa.MetaData()
@@ -53,6 +56,22 @@ career_evidence_table = sa.Table(
     sa.Column("claim_ref", sa.Text(), nullable=False),
     sa.CheckConstraint("confidence >= 0 AND confidence <= 1", name="ck_career_evidence_confidence"),
     sa.Index("ix_career_evidence_candidate_profile_id", "candidate_profile_id"),
+)
+
+profile_corrections_table = sa.Table(
+    "profile_corrections",
+    metadata,
+    sa.Column("id", sa.Uuid(), primary_key=True),
+    sa.Column(
+        "candidate_profile_id",
+        sa.Uuid(),
+        sa.ForeignKey("candidate_profiles.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    sa.Column("field", sa.Text(), nullable=False),
+    sa.Column("value", sa.JSON(), nullable=False),
+    sa.Column("corrected_at", sa.DateTime(timezone=True), nullable=False),
+    sa.Index("ix_profile_corrections_candidate_profile_id", "candidate_profile_id"),
 )
 
 jobs_table = sa.Table(
@@ -184,10 +203,11 @@ class ProfileRepository:
                 )
             )
             if existing_id:
+                canonical_profile = self._apply_saved_corrections(connection, existing_id, value)
                 connection.execute(
                     candidate_profiles_table.update()
                     .where(candidate_profiles_table.c.external_id == key)
-                    .values(profile=payload)
+                    .values(profile=_dump_model(canonical_profile))
                 )
                 self._replace_evidence(connection, existing_id, value)
                 return
@@ -200,6 +220,20 @@ class ProfileRepository:
                 )
             )
             self._replace_evidence(connection, profile_id, value)
+
+    def _apply_saved_corrections(
+        self,
+        connection: sa.Connection,
+        profile_id: uuid.UUID,
+        profile: CandidateProfile,
+    ) -> CandidateProfile:
+        rows = connection.execute(
+            sa.select(profile_corrections_table.c.field, profile_corrections_table.c.value)
+            .where(profile_corrections_table.c.candidate_profile_id == profile_id)
+            .order_by(profile_corrections_table.c.corrected_at, profile_corrections_table.c.id)
+        ).all()
+        updates = {row.field: row.value for row in rows}
+        return profile.model_copy(update=updates) if updates else profile
 
     def _replace_evidence(
         self,
@@ -237,6 +271,7 @@ class ProfileRepository:
 
     def clear(self) -> None:
         with self.engine.begin() as connection:
+            connection.execute(profile_corrections_table.delete())
             connection.execute(career_evidence_table.delete())
             connection.execute(candidate_profiles_table.delete())
 
@@ -244,6 +279,115 @@ class ProfileRepository:
         with self.engine.begin() as connection:
             rows = connection.scalars(sa.select(candidate_profiles_table.c.profile)).all()
         return [CandidateProfile.model_validate(row) for row in rows]
+
+
+@dataclass(frozen=True)
+class AppliedProfileCorrections:
+    candidate_id: str
+    original_profile: CandidateProfile
+    updated_profile: CandidateProfile
+    correction_ids: tuple[uuid.UUID, ...]
+
+
+class ProfileCorrectionRepository:
+    def __init__(self, engine: Engine) -> None:
+        self.engine = engine
+
+    def apply(
+        self,
+        candidate_id: str,
+        corrections: ProfileCorrectionRequest,
+    ) -> AppliedProfileCorrections | None:
+        fields = corrections.corrected_fields()
+        if not fields:
+            raise ValueError("At least one profile correction is required")
+
+        with self.engine.begin() as connection:
+            row = connection.execute(
+                sa.select(candidate_profiles_table.c.id, candidate_profiles_table.c.profile).where(
+                    candidate_profiles_table.c.external_id == candidate_id
+                )
+            ).one_or_none()
+            if row is None:
+                return None
+
+            original_profile = CandidateProfile.model_validate(row.profile)
+            updates = {field: getattr(corrections, field) for field in fields}
+            updated_profile = original_profile.model_copy(update=updates)
+            payload = _dump_model(updated_profile)
+            connection.execute(
+                candidate_profiles_table.update()
+                .where(candidate_profiles_table.c.id == row.id)
+                .values(profile=payload)
+            )
+            correction_ids: list[uuid.UUID] = []
+            for field in sorted(fields):
+                correction_id = uuid.uuid4()
+                correction_ids.append(correction_id)
+                connection.execute(
+                    profile_corrections_table.insert().values(
+                        id=correction_id,
+                        candidate_profile_id=row.id,
+                        field=field,
+                        value=payload[field],
+                        corrected_at=updated_profile.generated_at,
+                    )
+                )
+        return AppliedProfileCorrections(
+            candidate_id=candidate_id,
+            original_profile=original_profile,
+            updated_profile=updated_profile,
+            correction_ids=tuple(correction_ids),
+        )
+
+    def revert(self, applied: AppliedProfileCorrections) -> None:
+        with self.engine.begin() as connection:
+            profile_id = connection.scalar(
+                sa.select(candidate_profiles_table.c.id).where(
+                    candidate_profiles_table.c.external_id == applied.candidate_id
+                )
+            )
+            if profile_id is None:
+                raise KeyError(f"Candidate profile not found: {applied.candidate_id}")
+            connection.execute(
+                profile_corrections_table.delete().where(
+                    profile_corrections_table.c.candidate_profile_id == profile_id,
+                    profile_corrections_table.c.id.in_(applied.correction_ids),
+                )
+            )
+            connection.execute(
+                candidate_profiles_table.update()
+                .where(candidate_profiles_table.c.id == profile_id)
+                .values(profile=_dump_model(applied.original_profile))
+            )
+
+    def for_candidate(self, candidate_id: str) -> list[ProfileCorrectionRecord]:
+        with self.engine.begin() as connection:
+            rows = connection.execute(
+                sa.select(
+                    profile_corrections_table.c.id,
+                    profile_corrections_table.c.field,
+                    profile_corrections_table.c.value,
+                    profile_corrections_table.c.corrected_at,
+                )
+                .join(
+                    candidate_profiles_table,
+                    candidate_profiles_table.c.id
+                    == profile_corrections_table.c.candidate_profile_id,
+                )
+                .where(candidate_profiles_table.c.external_id == candidate_id)
+                .order_by(profile_corrections_table.c.corrected_at, profile_corrections_table.c.id)
+            ).all()
+        return [
+            ProfileCorrectionRecord(
+                correction_id=str(row.id),
+                candidate_id=candidate_id,
+                field=row.field,
+                value=row.value,
+                corrected_at=row.corrected_at,
+            )
+            for row in rows
+        ]
 
 
 class EvidenceRepository:
@@ -468,6 +612,7 @@ class RepositoryStore:
     def __init__(self, engine: Engine) -> None:
         self.profiles = ModelMapping[str, CandidateProfile](ProfileRepository(engine))
         self.evidence = EvidenceRepository(engine)
+        self.profile_corrections = ProfileCorrectionRepository(engine)
         self.jobs = ModelMapping[str, JobListing](JobRepository(engine))
         self.matches = ModelMapping[tuple[str, str], JobMatch](MatchRepository(engine))
         self.applications = ModelMapping[str, ApplicationPackage](ApplicationRepository(engine))

@@ -1,7 +1,18 @@
 """Minimal MCP tool surface for ChatGPT. Run separately from FastAPI during development."""
+import uuid
+
 from mcp.server.fastmcp import FastMCP
-from app.main import create_profile, search_jobs, score_match, estimate_compensation, prepare_application
+from app.main import (
+    apply_profile_corrections,
+    create_profile,
+    estimate_compensation,
+    get_profile_review,
+    prepare_application,
+    score_match,
+    search_jobs,
+)
 from app.main import ProfileRequest, JobSearchRequest, ApplicationRequest
+from app.models.schemas import ProfileCorrectionRequest
 
 mcp = FastMCP("Talent Advisor")
 
@@ -11,6 +22,29 @@ async def create_candidate_profile(candidate_id: str, resume_text: str, linkedin
     """Create an evidence-grounded candidate profile from resume and LinkedIn text."""
     return (await create_profile(ProfileRequest(candidate_id=candidate_id, resume_text=resume_text,
                                                 linkedin_text=linkedin_text, preferences=preferences or {}))).model_dump()
+
+
+@mcp.tool()
+async def review_candidate_profile(candidate_id: str):
+    """Read a profile with its source evidence and prior user-provided corrections."""
+    return get_profile_review(candidate_id).model_dump(mode="json")
+
+
+@mcp.tool()
+async def correct_candidate_profile(
+    candidate_id: str,
+    corrections: ProfileCorrectionRequest,
+    confirmed_by_user: bool,
+):
+    """Save explicitly confirmed user corrections; this changes only the local profile."""
+    if not confirmed_by_user:
+        raise ValueError("Profile corrections require direct user confirmation")
+    return apply_profile_corrections(
+        candidate_id,
+        corrections,
+        str(uuid.uuid4()),
+        "local_user",
+    ).model_dump(mode="json")
 
 
 @mcp.tool()

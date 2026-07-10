@@ -10,7 +10,11 @@ from app.agents.profile_agent import CandidateProfileAgent
 from app.agents.compensation_agent import CompensationAgent
 from app.agents.match_agent import MatchAgent
 from app.agents.application_agent import ApplicationAgent
-from app.models.schemas import ConfirmedScreeningAnswer
+from app.models.schemas import (
+    ConfirmedScreeningAnswer,
+    ProfileCorrectionRequest,
+    ProfileReview,
+)
 from app.services.job_service import JobService
 from app.services.document_service import (
     MAX_RESUME_UPLOAD_BYTES,
@@ -21,6 +25,7 @@ from app.services.document_service import (
 from app.services import local_auth_service
 from app.services.audit_service import (
     record_approval_audit_event,
+    record_profile_correction_audit_event,
     record_screening_confirmation_audit_event,
 )
 from app import store
@@ -118,6 +123,61 @@ async def create_profile(req: ProfileRequest):
     profile = await CandidateProfileAgent().run(req.candidate_id, req.resume_text, req.linkedin_text, req.preferences)
     store.profiles[profile.candidate_id] = profile
     return profile
+
+
+def get_profile_review(candidate_id: str) -> ProfileReview:
+    profile = store.profiles.get(candidate_id)
+    if profile is None:
+        raise HTTPException(404, "Candidate profile not found")
+    return ProfileReview(
+        profile=profile,
+        evidence=store.evidence.for_candidate(candidate_id),
+        corrections=store.profile_corrections.for_candidate(candidate_id),
+    )
+
+
+def apply_profile_corrections(
+    candidate_id: str,
+    corrections: ProfileCorrectionRequest,
+    request_id: str,
+    actor_id: str,
+) -> ProfileReview:
+    try:
+        applied = store.profile_corrections.apply(candidate_id, corrections)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    if applied is None:
+        raise HTTPException(404, "Candidate profile not found")
+    try:
+        record_profile_correction_audit_event(candidate_id, "corrected", request_id, actor_id)
+    except OSError as exc:
+        store.profile_corrections.revert(applied)
+        raise HTTPException(503, "Unable to record required audit receipt") from exc
+    return ProfileReview(
+        profile=applied.updated_profile,
+        evidence=store.evidence.for_candidate(candidate_id),
+        corrections=store.profile_corrections.for_candidate(candidate_id),
+    )
+
+
+@app.get("/profiles/{candidate_id}/review")
+def review_profile(candidate_id: ShortText) -> ProfileReview:
+    return get_profile_review(candidate_id)
+
+
+@app.patch("/profiles/{candidate_id}")
+def correct_profile(
+    candidate_id: ShortText,
+    corrections: ProfileCorrectionRequest,
+    request: Request,
+) -> ProfileReview:
+    request_id = request.headers.get("x-request-id", str(uuid.uuid4()))
+    return apply_profile_corrections(
+        candidate_id,
+        corrections,
+        request_id,
+        request.state.actor_id,
+    )
 
 
 @app.post("/resumes/extract")
