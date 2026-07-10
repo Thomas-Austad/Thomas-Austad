@@ -5,6 +5,7 @@ import pytest
 os.environ["APP_ENV"] = "test"
 
 from app import store
+from app.rate_limit import rate_limiter
 from app.models.schemas import (
     ApplicationPackage,
     CandidateProfile,
@@ -18,11 +19,13 @@ from app.models.schemas import (
 
 @pytest.fixture(autouse=True)
 def clear_store():
+    rate_limiter.clear()
     store.profiles.clear()
     store.jobs.clear()
     store.matches.clear()
     store.applications.clear()
     yield
+    rate_limiter.clear()
     store.profiles.clear()
     store.jobs.clear()
     store.matches.clear()

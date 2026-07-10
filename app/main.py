@@ -1,6 +1,8 @@
 import uuid
+from typing import Annotated
 
 from fastapi import FastAPI, File, HTTPException, Request, Response, UploadFile
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from pydantic import Field
 from app.agents.profile_agent import CandidateProfileAgent
@@ -17,33 +19,55 @@ from app.services.document_service import (
 )
 from app.services.audit_service import record_approval_audit_event
 from app import store
+from app.config import settings
+from app.rate_limit import client_identifier, rate_limiter, route_rate_limit
 
 app = FastAPI(title="Talent Advisor Platform", version="0.1.0")
 
+ShortText = Annotated[str, Field(min_length=1, max_length=128)]
+MediumText = Annotated[str, Field(max_length=2_000)]
+LongText = Annotated[str, Field(max_length=50_000)]
+ScreeningQuestionText = Annotated[str, Field(min_length=1, max_length=1_000)]
+
 
 class ProfileRequest(BaseModel):
-    candidate_id: str
-    resume_text: str
-    linkedin_text: str = ""
-    preferences: dict = {}
+    candidate_id: ShortText
+    resume_text: LongText
+    linkedin_text: LongText = ""
+    preferences: dict = Field(default_factory=dict)
 
 
 class JobSearchRequest(BaseModel):
-    greenhouse_boards: list[str] = []
-    lever_companies: list[str] = []
-    title_keywords: list[str] = []
+    greenhouse_boards: list[ShortText] = Field(default_factory=list, max_length=25)
+    lever_companies: list[ShortText] = Field(default_factory=list, max_length=25)
+    title_keywords: list[ShortText] = Field(default_factory=list, max_length=20)
 
 
 class ApplicationRequest(BaseModel):
-    candidate_id: str
-    job_id: str
-    screening_questions: list[str] = []
+    candidate_id: ShortText
+    job_id: MediumText
+    screening_questions: list[ScreeningQuestionText] = Field(default_factory=list, max_length=50)
 
 
 class ScreeningQuestionResolutionRequest(BaseModel):
-    question: str
-    answer: str = Field(min_length=1)
+    question: ScreeningQuestionText
+    answer: str = Field(min_length=1, max_length=5_000)
     confirmed_by_user: bool = False
+
+
+@app.middleware("http")
+async def enforce_rate_limits(request: Request, call_next):
+    if settings.api_rate_limit_enabled:
+        bucket, limit = route_rate_limit(request)
+        allowed = rate_limiter.check(
+            client_id=client_identifier(request),
+            bucket=bucket,
+            limit=limit,
+            window_seconds=settings.api_rate_limit_window_seconds,
+        )
+        if not allowed:
+            return JSONResponse(status_code=429, content={"detail": "Rate limit exceeded"})
+    return await call_next(request)
 
 
 @app.get("/health")

@@ -285,3 +285,60 @@ def test_job_search_title_keywords_filter_results(monkeypatch, sample_job):
     assert response.json()["jobs"][0]["job_id"] == sample_job.job_id
     assert list(store.jobs) == [sample_job.job_id]
 
+
+def test_model_backed_endpoint_rate_limit_returns_safe_error(monkeypatch, sample_profile):
+    monkeypatch.setattr("app.config.settings.api_model_rate_limit", 1)
+    monkeypatch.setattr("app.config.settings.api_rate_limit_window_seconds", 60)
+
+    async def profile_run(self, candidate_id, resume_text, linkedin_text, preferences):
+        return sample_profile
+
+    monkeypatch.setattr("app.services.openai_service.OpenAIService.__init__", lambda self: None)
+    monkeypatch.setattr("app.main.CandidateProfileAgent.run", profile_run)
+    client = TestClient(app)
+    payload = {"candidate_id": sample_profile.candidate_id, "resume_text": "Python"}
+
+    first = client.post("/profiles", json=payload)
+    second = client.post("/profiles", json=payload)
+
+    assert first.status_code == 200
+    assert second.status_code == 429
+    assert second.json() == {"detail": "Rate limit exceeded"}
+
+
+def test_job_search_rejects_oversized_provider_lists():
+    response = TestClient(app).post(
+        "/jobs/search",
+        json={"greenhouse_boards": [f"board-{index}" for index in range(26)]},
+    )
+
+    assert response.status_code == 422
+
+
+def test_profile_rejects_oversized_resume_text(sample_profile):
+    response = TestClient(app).post(
+        "/profiles",
+        json={
+            "candidate_id": sample_profile.candidate_id,
+            "resume_text": "x" * 50_001,
+        },
+    )
+
+    assert response.status_code == 422
+
+
+def test_screening_resolution_rejects_oversized_answers(sample_application):
+    question = "Are you authorized to work in the United States?"
+    store.applications[sample_application.application_id] = sample_application
+
+    response = TestClient(app).post(
+        f"/applications/{sample_application.application_id}/screening-questions/resolve",
+        json={
+            "question": question,
+            "answer": "x" * 5_001,
+            "confirmed_by_user": True,
+        },
+    )
+
+    assert response.status_code == 422
+

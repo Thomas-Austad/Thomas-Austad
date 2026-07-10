@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import field_validator, model_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -16,6 +16,14 @@ class Settings(BaseSettings):
     openai_max_retries: int = 2
     connector_timeout_seconds: float = 30
     connector_max_attempts: int = 2
+    api_rate_limit_enabled: bool = True
+    api_rate_limit_window_seconds: int = Field(default=60, gt=0)
+    api_default_rate_limit: int = Field(default=120, gt=0)
+    api_model_rate_limit: int = Field(default=30, gt=0)
+    api_upload_rate_limit: int = Field(default=10, gt=0)
+    api_job_search_rate_limit: int = Field(default=30, gt=0)
+    api_document_rate_limit: int = Field(default=30, gt=0)
+    api_write_rate_limit: int = Field(default=60, gt=0)
     database_url: str = DEFAULT_DATABASE_URL
     public_base_url: str = "http://localhost:8000"
     audit_log_path: str = "var/audit/events.jsonl"
