@@ -18,25 +18,41 @@ from app.models.schemas import (
 
 metadata = sa.MetaData()
 
+users_table = sa.Table(
+    "users",
+    metadata,
+    sa.Column("id", sa.Uuid(), primary_key=True),
+    sa.Column("email", sa.Text(), unique=True),
+)
+
 candidate_profiles_table = sa.Table(
     "candidate_profiles",
     metadata,
     sa.Column("id", sa.Uuid(), primary_key=True),
     sa.Column("external_id", sa.Text(), nullable=False, unique=True),
+    sa.Column("user_id", sa.Uuid(), sa.ForeignKey("users.id")),
     sa.Column("profile", sa.JSON(), nullable=False),
+    sa.Index("ix_candidate_profiles_user_id", "user_id"),
 )
 
 career_evidence_table = sa.Table(
     "career_evidence",
     metadata,
     sa.Column("id", sa.Uuid(), primary_key=True),
-    sa.Column("candidate_profile_id", sa.Uuid(), nullable=False),
+    sa.Column(
+        "candidate_profile_id",
+        sa.Uuid(),
+        sa.ForeignKey("candidate_profiles.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
     sa.Column("source_type", sa.Text(), nullable=False),
     sa.Column("source_ref", sa.Text()),
     sa.Column("excerpt", sa.Text(), nullable=False),
     sa.Column("confidence", sa.Numeric(), nullable=False),
     sa.Column("claim_type", sa.Text(), nullable=False),
     sa.Column("claim_ref", sa.Text(), nullable=False),
+    sa.CheckConstraint("confidence >= 0 AND confidence <= 1", name="ck_career_evidence_confidence"),
+    sa.Index("ix_career_evidence_candidate_profile_id", "candidate_profile_id"),
 )
 
 jobs_table = sa.Table(
@@ -54,17 +70,34 @@ jobs_table = sa.Table(
     sa.Column("active", sa.Boolean(), default=True),
     sa.Column("raw", sa.JSON()),
     sa.Column("listing", sa.JSON(), nullable=False),
+    sa.CheckConstraint(
+        "(salary_min IS NULL OR salary_min >= 0) AND "
+        "(salary_max IS NULL OR salary_max >= 0) AND "
+        "(salary_min IS NULL OR salary_max IS NULL OR salary_min <= salary_max)",
+        name="ck_jobs_salary_range",
+    ),
 )
 
 job_matches_table = sa.Table(
     "job_matches",
     metadata,
-    sa.Column("candidate_profile_id", sa.Uuid(), primary_key=True),
-    sa.Column("job_id", sa.Text(), primary_key=True),
+    sa.Column(
+        "candidate_profile_id",
+        sa.Uuid(),
+        sa.ForeignKey("candidate_profiles.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    sa.Column("job_id", sa.Text(), sa.ForeignKey("jobs.id", ondelete="CASCADE"), primary_key=True),
     sa.Column("scores", sa.JSON(), nullable=False),
     sa.Column("overall_score", sa.Numeric(), nullable=False),
     sa.Column("recommendation", sa.Text(), nullable=False),
     sa.Column("match", sa.JSON(), nullable=False),
+    sa.CheckConstraint("overall_score >= 0 AND overall_score <= 100", name="ck_job_matches_overall_score"),
+    sa.CheckConstraint(
+        "recommendation IN ('apply', 'consider', 'skip')",
+        name="ck_job_matches_recommendation",
+    ),
+    sa.Index("ix_job_matches_job_id", "job_id"),
 )
 
 applications_table = sa.Table(
@@ -72,10 +105,21 @@ applications_table = sa.Table(
     metadata,
     sa.Column("id", sa.Uuid(), primary_key=True),
     sa.Column("application_key", sa.Text(), nullable=False, unique=True),
-    sa.Column("candidate_profile_id", sa.Uuid()),
-    sa.Column("job_id", sa.Text()),
+    sa.Column(
+        "candidate_profile_id",
+        sa.Uuid(),
+        sa.ForeignKey("candidate_profiles.id"),
+        nullable=False,
+    ),
+    sa.Column("job_id", sa.Text(), sa.ForeignKey("jobs.id"), nullable=False),
     sa.Column("package", sa.JSON(), nullable=False),
     sa.Column("status", sa.Text(), nullable=False),
+    sa.CheckConstraint(
+        "status IN ('prepared', 'approved', 'submitted', 'failed')",
+        name="ck_applications_status",
+    ),
+    sa.Index("ix_applications_candidate_profile_id", "candidate_profile_id"),
+    sa.Index("ix_applications_job_id", "job_id"),
 )
 
 T = TypeVar("T", bound=BaseModel)
@@ -354,6 +398,11 @@ class ApplicationRepository:
                     candidate_profiles_table.c.external_id == value.candidate_id
                 )
             )
+            if profile_id is None:
+                raise KeyError(f"Candidate profile not found: {value.candidate_id}")
+            job_exists = connection.scalar(sa.select(jobs_table.c.id).where(jobs_table.c.id == value.job_id))
+            if job_exists is None:
+                raise KeyError(f"Job not found: {value.job_id}")
             exists = connection.scalar(
                 sa.select(applications_table.c.id).where(applications_table.c.application_key == key)
             )
