@@ -5,6 +5,7 @@
   "packageManager": "pnpm@11.7.0",
   "scripts": {
     "build": "vite build",
+    "browser:build": "vite build --config browser.vite.config.ts",
     "test": "vitest",
     "typecheck": "tsc --noEmit"
   },

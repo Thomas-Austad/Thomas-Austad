@@ -25,9 +25,10 @@ interface AppProps {
   applicationClient?: ApplicationToolClient;
   jobClient?: JobToolClient;
   profileClient?: ProfileToolClient;
+  candidateId?: string;
 }
 
-export function App({ applicationClient, jobClient, profileClient }: AppProps) {
+export function App({ applicationClient, candidateId, jobClient, profileClient }: AppProps) {
   const [route, setRoute] = useState<Route>("profile");
   const [preparedPackage, setPreparedPackage] = useState<ApplicationPackage>();
 
@@ -55,11 +56,12 @@ export function App({ applicationClient, jobClient, profileClient }: AppProps) {
       </nav>
       <section aria-labelledby={`${route}-tab`} id={`${route}-panel`} role="tabpanel" tabIndex={-1}>
         {route === "profile" ? (
-          <ProfileReviewView client={profileClient} />
+          <ProfileReviewView client={profileClient} candidateId={candidateId} />
         ) : route === "jobs" ? (
           <JobReviewView
             applicationClient={applicationClient}
             client={jobClient}
+            candidateId={candidateId}
             onApplicationPrepared={(applicationPackage) => {
               setPreparedPackage(applicationPackage);
               setRoute("applications");

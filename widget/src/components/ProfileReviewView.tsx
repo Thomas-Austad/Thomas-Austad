@@ -7,6 +7,7 @@ import { StatusPanel } from "./StatusPanel";
 
 interface ProfileReviewViewProps {
   client?: ProfileToolClient;
+  candidateId?: string;
 }
 
 const fieldLabels: Record<EditableProfileField, string> = {
@@ -19,8 +20,8 @@ function displayValue(value: unknown): string {
   return typeof value === "string" ? value : JSON.stringify(value);
 }
 
-export function ProfileReviewView({ client }: ProfileReviewViewProps) {
-  const [candidateId, setCandidateId] = useState("");
+export function ProfileReviewView({ client, candidateId: suppliedCandidateId }: ProfileReviewViewProps) {
+  const [candidateId, setCandidateId] = useState(suppliedCandidateId ?? "");
   const [field, setField] = useState<EditableProfileField>("headline");
   const [value, setValue] = useState("");
   const [review, setReview] = useState<ProfileReview>();
@@ -69,15 +70,14 @@ export function ProfileReviewView({ client }: ProfileReviewViewProps) {
       <h2 id="profile-view-title">Profile review</h2>
       <p>Review evidence and ambiguities before using this profile for job matching or application preparation.</p>
       <form className="candidate-form" onSubmit={load}>
-        <label htmlFor="candidate-id">Candidate ID</label>
-        <input
+        {suppliedCandidateId ? <p>Your current profile is selected.</p> : <><label htmlFor="candidate-id">Candidate ID</label><input
           autoComplete="off"
           id="candidate-id"
           maxLength={128}
           onChange={(event) => setCandidateId(event.target.value)}
           required
           value={candidateId}
-        />
+        /></>}
         <button className="primary" disabled={status === "loading"} type="submit">
           Review profile
         </button>

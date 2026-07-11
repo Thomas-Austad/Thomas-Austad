@@ -10,6 +10,7 @@ interface JobReviewViewProps {
   applicationClient?: ApplicationToolClient;
   client?: JobToolClient;
   onApplicationPrepared?: (applicationPackage: ApplicationPackage) => void;
+  candidateId?: string;
 }
 
 function toList(value: string): string[] {
@@ -30,7 +31,7 @@ function formatMoney(value: number | null | undefined, currency: string): string
     : new Intl.NumberFormat("en-US", { style: "currency", currency, maximumFractionDigits: 0 }).format(value);
 }
 
-export function JobReviewView({ applicationClient, client, onApplicationPrepared }: JobReviewViewProps) {
+export function JobReviewView({ applicationClient, candidateId: suppliedCandidateId, client, onApplicationPrepared }: JobReviewViewProps) {
   const [greenhouseBoards, setGreenhouseBoards] = useState("");
   const [leverCompanies, setLeverCompanies] = useState("");
   const [ashbyJobBoards, setAshbyJobBoards] = useState("");
@@ -42,7 +43,7 @@ export function JobReviewView({ applicationClient, client, onApplicationPrepared
   const [compensationCurrency, setCompensationCurrency] = useState("USD");
   const [employmentTypes, setEmploymentTypes] = useState("");
   const [freshnessDays, setFreshnessDays] = useState("");
-  const [candidateId, setCandidateId] = useState("");
+  const [candidateId, setCandidateId] = useState(suppliedCandidateId ?? "");
   const [result, setResult] = useState<JobSearchResult>();
   const [selectedJob, setSelectedJob] = useState<JobListing>();
   const [match, setMatch] = useState<JobMatch>();
@@ -219,6 +220,7 @@ export function JobReviewView({ applicationClient, client, onApplicationPrepared
       {selectedJob ? (
         <JobDetails
           candidateId={candidateId}
+          showProfileReference={!suppliedCandidateId}
           compensation={compensation}
           geography={geography}
           job={selectedJob}
@@ -239,6 +241,7 @@ export function JobReviewView({ applicationClient, client, onApplicationPrepared
 
 interface JobDetailsProps {
   candidateId: string;
+  showProfileReference: boolean;
   compensation?: CompensationEstimate;
   geography: string;
   job: JobListing;
@@ -270,8 +273,7 @@ function JobDetails(props: JobDetailsProps) {
       </section>
       <section aria-labelledby="match-actions-title" className="review-actions">
         <h3 id="match-actions-title">Fit review</h3>
-        <label htmlFor="job-candidate-id">Candidate ID</label>
-        <input id="job-candidate-id" maxLength={128} onChange={(event) => props.onCandidateIdChange(event.target.value)} value={props.candidateId} />
+        {props.showProfileReference ? <><label htmlFor="job-candidate-id">Candidate ID</label><input id="job-candidate-id" maxLength={128} onChange={(event) => props.onCandidateIdChange(event.target.value)} value={props.candidateId} /></> : <p>Using your current profile.</p>}
         <button className="primary" onClick={props.onMatch} type="button">Review match</button>
         <button
           className="prepare-button"

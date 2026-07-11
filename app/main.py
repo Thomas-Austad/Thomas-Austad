@@ -4,11 +4,13 @@ import io
 import json
 import zipfile
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Annotated
 from urllib.parse import urlsplit
 
 from fastapi import FastAPI, File, HTTPException, Request, Response, UploadFile
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, model_validator
 from pydantic import Field
 from app.agents.profile_agent import CandidateProfileAgent
@@ -33,6 +35,7 @@ from app.services.document_service import (
     markdown_resume_to_docx,
 )
 from app.services import local_auth_service
+from app.services.browser_session_service import BrowserSessionStore
 from app.services.audit_service import (
     record_approval_audit_event,
     record_browser_handoff_audit_event,
@@ -45,6 +48,12 @@ from app.config import settings
 from app.rate_limit import client_identifier, rate_limiter, route_rate_limit
 
 app = FastAPI(title="Talent Advisor Platform", version="0.1.0")
+BROWSER_SESSION_COOKIE = "talent_advisor_browser_session"
+BROWSER_UI_DIST_DIR = Path(__file__).resolve().parents[1] / "browser_ui_dist"
+browser_sessions = BrowserSessionStore(
+    bootstrap_ttl_seconds=settings.browser_bootstrap_ttl_seconds,
+    session_ttl_seconds=settings.browser_session_ttl_seconds,
+)
 
 ShortText = Annotated[str, Field(min_length=1, max_length=128)]
 MediumText = Annotated[str, Field(max_length=2_000)]
@@ -91,6 +100,26 @@ class BrowserHandoffRequest(BaseModel):
     confirmed_by_user: bool = False
     expected_destination_url: str = Field(min_length=1, max_length=2_000)
     idempotency_key: str = Field(min_length=16, max_length=128)
+
+
+class BrowserBootstrapRequest(BaseModel):
+    bootstrap_token: str = Field(min_length=32, max_length=256)
+
+
+def _is_public_browser_path(path: str) -> bool:
+    return path == "/health" or path == "/app" or path.startswith("/app/") or path == "/browser-session/bootstrap"
+
+
+def _browser_origin_is_valid(request: Request) -> bool:
+    if request.headers.get("origin") != settings.public_base_url.rstrip("/"):
+        return False
+    fetch_site = request.headers.get("sec-fetch-site")
+    return fetch_site in {None, "same-origin", "none"}
+
+
+def _require_browser_confirmation(request: Request, action: str) -> None:
+    if getattr(request.state, "browser_session", False) and request.headers.get("x-user-confirmed") != "true":
+        raise HTTPException(400, f"{action} requires direct user confirmation")
 
 
 _BROWSER_HANDOFF_HOSTS: dict[BrowserHandoffProvider, set[str]] = {
@@ -280,7 +309,31 @@ async def enforce_rate_limits(request: Request, call_next):
 
 @app.middleware("http")
 async def require_local_authentication(request: Request, call_next):
-    if request.url.path == "/health":
+    if _is_public_browser_path(request.url.path):
+        response = await call_next(request)
+        if request.url.path == "/app" or request.url.path.startswith("/app/"):
+            response.headers["Cache-Control"] = "no-store"
+            response.headers["Content-Security-Policy"] = (
+                "default-src 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; "
+                "form-action 'self'; connect-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'"
+            )
+            response.headers["Referrer-Policy"] = "no-referrer"
+            response.headers["X-Content-Type-Options"] = "nosniff"
+        return response
+
+    session_id = request.cookies.get(BROWSER_SESSION_COOKIE)
+    if session_id:
+        if request.headers.get("authorization"):
+            return JSONResponse(status_code=400, content={"detail": "Choose one local authentication method"})
+        session = browser_sessions.get_session(session_id)
+        if session is None:
+            return JSONResponse(status_code=401, content={"detail": "Browser session expired"})
+        if request.method not in {"GET", "HEAD", "OPTIONS"}:
+            csrf_token = request.headers.get("x-csrf-token", "")
+            if not _browser_origin_is_valid(request) or not browser_sessions.validate_csrf(session, csrf_token):
+                return JSONResponse(status_code=403, content={"detail": "Browser request could not be verified"})
+        request.state.actor_id = local_auth_service.LOCAL_ACTOR_ID
+        request.state.browser_session = True
         return await call_next(request)
 
     authorization = request.headers.get("authorization", "")
@@ -314,6 +367,53 @@ async def require_local_authentication(request: Request, call_next):
 @app.get("/health")
 def health() -> dict:
     return {"ok": True}
+
+
+@app.post("/browser-session/launch")
+def create_browser_launch() -> dict[str, str]:
+    """Create one short-lived launcher URL without returning the bearer credential."""
+    bootstrap_token = browser_sessions.create_bootstrap()
+    return {"browser_url": f"{settings.public_base_url.rstrip('/')}/app#bootstrap={bootstrap_token}"}
+
+
+@app.post("/browser-session/bootstrap")
+def bootstrap_browser_session(payload: BrowserBootstrapRequest, response: Response) -> dict[str, str]:
+    """Exchange a launcher-only value for an opaque, HttpOnly browser session."""
+    session = browser_sessions.redeem_bootstrap(payload.bootstrap_token)
+    if session is None:
+        raise HTTPException(401, "Browser startup link is invalid or expired")
+    response.set_cookie(
+        BROWSER_SESSION_COOKIE,
+        session.session_id,
+        max_age=settings.browser_session_ttl_seconds,
+        path="/",
+        secure=True,
+        httponly=True,
+        samesite="strict",
+    )
+    response.headers["Cache-Control"] = "no-store"
+    return {"csrf_token": session.csrf_token}
+
+
+@app.post("/browser-session/logout")
+def logout_browser_session(request: Request, response: Response) -> dict[str, str]:
+    session_id = request.cookies.get(BROWSER_SESSION_COOKIE)
+    if session_id:
+        browser_sessions.revoke(session_id)
+    response.delete_cookie(BROWSER_SESSION_COOKIE, path="/")
+    return {"status": "signed_out"}
+
+
+@app.get("/app", include_in_schema=False)
+@app.get("/app/", include_in_schema=False)
+def browser_application() -> FileResponse:
+    index = BROWSER_UI_DIST_DIR / "browser.html"
+    if not index.is_file():
+        raise HTTPException(503, "Browser workspace assets are unavailable")
+    return FileResponse(index)
+
+
+app.mount("/app", StaticFiles(directory=BROWSER_UI_DIST_DIR, check_dir=False), name="browser-ui")
 
 
 @app.post("/profiles")
@@ -369,6 +469,7 @@ def correct_profile(
     corrections: ProfileCorrectionRequest,
     request: Request,
 ) -> ProfileReview:
+    _require_browser_confirmation(request, "Profile correction")
     request_id = request.headers.get("x-request-id", str(uuid.uuid4()))
     return apply_profile_corrections(
         candidate_id,
@@ -554,8 +655,14 @@ async def prepare_application(req: ApplicationRequest):
     return package
 
 
+@app.get("/applications/{application_id}")
+def review_application(application_id: ShortText):
+    return get_application_package(application_id)
+
+
 @app.post("/applications/{application_id}/approve")
 def approve_application(application_id: str, request: Request):
+    _require_browser_confirmation(request, "Application approval")
     request_id = request.headers.get("x-request-id", str(uuid.uuid4()))
     return approve_prepared_application(application_id, request_id, request.state.actor_id)
 

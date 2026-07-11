@@ -30,6 +30,8 @@ class Settings(BaseSettings):
     public_base_url: str = "http://127.0.0.1:8000"
     audit_log_path: str = "var/audit/events.jsonl"
     local_access_token: str = Field(default="", repr=False)
+    browser_bootstrap_ttl_seconds: int = Field(default=60, ge=10, le=300)
+    browser_session_ttl_seconds: int = Field(default=3_600, ge=300, le=86_400)
     data_encryption_key_version: int = Field(default=1, ge=1)
     require_encrypted_storage: bool = False
     profile_retention_days: int = Field(default=730, ge=1)

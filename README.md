@@ -18,6 +18,17 @@ A personal-use, ChatGPT-native AI career platform MVP.
 
 ## Run locally
 
+### Windows app launcher
+
+After installing the local prerequisites, double-click
+`scripts\\Start-TalentAdvisor.vbs`. On first use it asks for an OpenAI API key,
+creates private local database settings, starts only loopback services, and
+opens the Career Workspace. It never submits an application; local approval
+and employer-page handoff remain separate, confirmed actions.
+
+If Docker Desktop is not ready or a local update is needed, the launcher shows
+a plain-language recovery message and does not reset existing data.
+
 ```bash
 cp .env.example .env
 # Add OPENAI_API_KEY and a unique POSTGRES_PASSWORD.
