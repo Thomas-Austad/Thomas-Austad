@@ -16,6 +16,14 @@ function toList(value: string): string[] {
   return value.split(/[\n,]/).map((item) => item.trim()).filter(Boolean);
 }
 
+function toOptionalInteger(value: string): number | undefined {
+  if (!value.trim()) {
+    return undefined;
+  }
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : undefined;
+}
+
 function formatMoney(value: number | null | undefined, currency: string): string {
   return value === null || value === undefined
     ? "Not provided"
@@ -25,7 +33,15 @@ function formatMoney(value: number | null | undefined, currency: string): string
 export function JobReviewView({ applicationClient, client, onApplicationPrepared }: JobReviewViewProps) {
   const [greenhouseBoards, setGreenhouseBoards] = useState("");
   const [leverCompanies, setLeverCompanies] = useState("");
+  const [ashbyJobBoards, setAshbyJobBoards] = useState("");
   const [keywords, setKeywords] = useState("");
+  const [companyKeywords, setCompanyKeywords] = useState("");
+  const [locationKeywords, setLocationKeywords] = useState("");
+  const [remoteMode, setRemoteMode] = useState("");
+  const [minimumSalary, setMinimumSalary] = useState("");
+  const [compensationCurrency, setCompensationCurrency] = useState("USD");
+  const [employmentTypes, setEmploymentTypes] = useState("");
+  const [freshnessDays, setFreshnessDays] = useState("");
   const [candidateId, setCandidateId] = useState("");
   const [result, setResult] = useState<JobSearchResult>();
   const [selectedJob, setSelectedJob] = useState<JobListing>();
@@ -44,12 +60,24 @@ export function JobReviewView({ applicationClient, client, onApplicationPrepared
       return;
     }
     setStatus("loading");
-    setDetail("Searching supported job sources.");
+    setDetail("Refreshing supported job sources.");
     try {
+      const minimumSalaryValue = toOptionalInteger(minimumSalary);
+      const remoteModeValue = remoteMode === "remote" || remoteMode === "hybrid" || remoteMode === "onsite"
+        ? remoteMode
+        : undefined;
       const nextResult = await searchJobs(client, {
         greenhouse_boards: toList(greenhouseBoards),
         lever_companies: toList(leverCompanies),
-        title_keywords: toList(keywords)
+        ashby_job_boards: toList(ashbyJobBoards),
+        title_keywords: toList(keywords),
+        company_keywords: toList(companyKeywords),
+        location_keywords: toList(locationKeywords),
+        remote_mode: remoteModeValue,
+        minimum_salary: minimumSalaryValue,
+        compensation_currency: minimumSalaryValue === undefined ? undefined : compensationCurrency.trim().toUpperCase(),
+        employment_types: toList(employmentTypes),
+        freshness_days: toOptionalInteger(freshnessDays)
       });
       setResult(nextResult);
       setSelectedJob(undefined);
@@ -57,7 +85,7 @@ export function JobReviewView({ applicationClient, client, onApplicationPrepared
       setCompensation(undefined);
       if (nextResult.jobs.length === 0) {
         setStatus("empty");
-        setDetail("No jobs matched this search. Update the supported source names or keywords and try again.");
+        setDetail("No jobs matched this manual refresh. Update the source names or filters and try again.");
       } else {
         setStatus("ready");
         setDetail("");
@@ -137,15 +165,36 @@ export function JobReviewView({ applicationClient, client, onApplicationPrepared
   return (
     <section aria-labelledby="job-view-title" className="job-view">
       <h2 id="job-view-title">Jobs and fit review</h2>
-      <p>Search supported sources, then inspect the job text, match explanation, and compensation assumptions before preparing an application.</p>
+      <p>Manually refresh supported sources, then inspect the job text, match explanation, and compensation assumptions before preparing an application.</p>
       <form className="search-form" onSubmit={runSearch}>
         <label htmlFor="greenhouse-boards">Greenhouse boards (comma or line separated)</label>
         <textarea id="greenhouse-boards" maxLength={6_424} onChange={(event) => setGreenhouseBoards(event.target.value)} value={greenhouseBoards} />
         <label htmlFor="lever-companies">Lever companies (comma or line separated)</label>
         <textarea id="lever-companies" maxLength={6_424} onChange={(event) => setLeverCompanies(event.target.value)} value={leverCompanies} />
+        <label htmlFor="ashby-job-boards">Ashby job boards (comma or line separated)</label>
+        <textarea id="ashby-job-boards" maxLength={6_424} onChange={(event) => setAshbyJobBoards(event.target.value)} value={ashbyJobBoards} />
         <label htmlFor="job-keywords">Title keywords (comma or line separated)</label>
         <input id="job-keywords" maxLength={5_139} onChange={(event) => setKeywords(event.target.value)} value={keywords} />
-        <button className="primary" disabled={status === "loading"} type="submit">Search jobs</button>
+        <label htmlFor="company-keywords">Company keywords (comma or line separated)</label>
+        <input id="company-keywords" maxLength={5_139} onChange={(event) => setCompanyKeywords(event.target.value)} value={companyKeywords} />
+        <label htmlFor="location-keywords">Location keywords (comma or line separated)</label>
+        <input id="location-keywords" maxLength={5_139} onChange={(event) => setLocationKeywords(event.target.value)} value={locationKeywords} />
+        <label htmlFor="remote-mode">Work arrangement</label>
+        <select id="remote-mode" onChange={(event) => setRemoteMode(event.target.value)} value={remoteMode}>
+          <option value="">Any</option>
+          <option value="remote">Remote</option>
+          <option value="hybrid">Hybrid</option>
+          <option value="onsite">Onsite</option>
+        </select>
+        <label htmlFor="minimum-salary">Minimum annual compensation</label>
+        <input id="minimum-salary" min="0" onChange={(event) => setMinimumSalary(event.target.value)} type="number" value={minimumSalary} />
+        <label htmlFor="compensation-currency">Compensation currency</label>
+        <input id="compensation-currency" maxLength={3} onChange={(event) => setCompensationCurrency(event.target.value)} value={compensationCurrency} />
+        <label htmlFor="employment-types">Employment types (comma or line separated)</label>
+        <input id="employment-types" maxLength={1_289} onChange={(event) => setEmploymentTypes(event.target.value)} value={employmentTypes} />
+        <label htmlFor="freshness-days">Posted within days</label>
+        <input id="freshness-days" max="365" min="1" onChange={(event) => setFreshnessDays(event.target.value)} type="number" value={freshnessDays} />
+        <button className="primary" disabled={status === "loading"} type="submit">Refresh jobs</button>
       </form>
       <StatusPanel detail={detail} kind={status} />
       {result?.provider_errors.length ? (

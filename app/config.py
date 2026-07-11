@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     openai_max_retries: int = 2
     connector_timeout_seconds: float = 30
     connector_max_attempts: int = 2
+    connector_max_response_bytes: int = Field(default=2_000_000, gt=0)
     api_rate_limit_enabled: bool = True
     api_rate_limit_window_seconds: int = Field(default=60, gt=0)
     api_default_rate_limit: int = Field(default=120, gt=0)

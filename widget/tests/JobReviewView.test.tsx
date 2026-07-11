@@ -85,9 +85,9 @@ describe("JobReviewView", () => {
     };
     render(<JobReviewView client={client} />);
 
-    await user.click(screen.getByRole("button", { name: "Search jobs" }));
+    await user.click(screen.getByRole("button", { name: "Refresh jobs" }));
 
-    expect(screen.getByRole("status")).toHaveTextContent("Searching supported job sources");
+    expect(screen.getByRole("status")).toHaveTextContent("Refreshing supported job sources");
     resolveSearch(jobSearchResult);
     expect(await screen.findByText("Senior Backend Engineer")).toBeInTheDocument();
   });
@@ -98,7 +98,7 @@ describe("JobReviewView", () => {
     render(<JobReviewView client={client} />);
 
     await user.type(screen.getByLabelText("Greenhouse boards (comma or line separated)"), "example");
-    await user.click(screen.getByRole("button", { name: "Search jobs" }));
+    await user.click(screen.getByRole("button", { name: "Refresh jobs" }));
 
     expect(await screen.findByText("Senior Backend Engineer")).toBeInTheDocument();
     expect(screen.getByRole("status")).toHaveTextContent("Unavailable provider: lever");
@@ -121,9 +121,9 @@ describe("JobReviewView", () => {
     const client: JobToolClient = { callTool: vi.fn().mockResolvedValue({ count: 0, jobs: [], provider_errors: [] }) };
     render(<JobReviewView client={client} />);
 
-    await user.click(screen.getByRole("button", { name: "Search jobs" }));
+    await user.click(screen.getByRole("button", { name: "Refresh jobs" }));
 
-    expect(await screen.findByRole("status")).toHaveTextContent("No jobs matched this search");
+    expect(await screen.findByRole("status")).toHaveTextContent("No jobs matched this manual refresh");
   });
 
   it("keeps existing results when a later search fails", async () => {
@@ -133,9 +133,9 @@ describe("JobReviewView", () => {
     };
     render(<JobReviewView client={client} />);
 
-    await user.click(screen.getByRole("button", { name: "Search jobs" }));
+    await user.click(screen.getByRole("button", { name: "Refresh jobs" }));
     expect(await screen.findByText("Senior Backend Engineer")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Search jobs" }));
+    await user.click(screen.getByRole("button", { name: "Refresh jobs" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Existing results remain available");
     expect(screen.getByText("Senior Backend Engineer")).toBeInTheDocument();
@@ -153,7 +153,7 @@ describe("JobReviewView", () => {
       />
     );
 
-    await user.click(screen.getByRole("button", { name: "Search jobs" }));
+    await user.click(screen.getByRole("button", { name: "Refresh jobs" }));
     await user.click(await screen.findByRole("button", { name: "Inspect job" }));
     expect(screen.getByRole("button", { name: "Prepare application for review" })).toBeDisabled();
     await user.type(screen.getByLabelText("Candidate ID"), "candidate-1");
@@ -173,7 +173,7 @@ describe("JobReviewView", () => {
     const applicationClient: ApplicationToolClient = { callTool: vi.fn().mockResolvedValue({ malformed: true }) };
     render(<JobReviewView applicationClient={applicationClient} client={makeClient()} />);
 
-    await user.click(screen.getByRole("button", { name: "Search jobs" }));
+    await user.click(screen.getByRole("button", { name: "Refresh jobs" }));
     await user.click(await screen.findByRole("button", { name: "Inspect job" }));
     await user.type(screen.getByLabelText("Candidate ID"), "candidate-1");
     await user.click(screen.getByRole("button", { name: "Prepare application for review" }));
@@ -190,7 +190,7 @@ describe("JobReviewView", () => {
     };
     render(<JobReviewView applicationClient={applicationClient} client={makeClient()} />);
 
-    await user.click(screen.getByRole("button", { name: "Search jobs" }));
+    await user.click(screen.getByRole("button", { name: "Refresh jobs" }));
     await user.click(await screen.findByRole("button", { name: "Inspect job" }));
     await user.type(screen.getByLabelText("Candidate ID"), "candidate-1");
     await user.click(screen.getByRole("button", { name: "Prepare application for review" }));
@@ -198,5 +198,36 @@ describe("JobReviewView", () => {
     expect(screen.getByRole("button", { name: "Prepare application for review" })).toBeDisabled();
     expect(applicationClient.callTool).toHaveBeenCalledTimes(1);
     resolvePreparation(preparedPackage);
+  });
+
+  it("sends the approved source and filter values in a manual refresh", async () => {
+    const user = userEvent.setup();
+    const client = makeClient();
+    render(<JobReviewView client={client} />);
+
+    await user.type(screen.getByLabelText("Ashby job boards (comma or line separated)"), "example");
+    await user.type(screen.getByLabelText("Company keywords (comma or line separated)"), "Example");
+    await user.type(screen.getByLabelText("Location keywords (comma or line separated)"), "Remote");
+    await user.selectOptions(screen.getByLabelText("Work arrangement"), "remote");
+    await user.type(screen.getByLabelText("Minimum annual compensation"), "150000");
+    await user.clear(screen.getByLabelText("Compensation currency"));
+    await user.type(screen.getByLabelText("Compensation currency"), "usd");
+    await user.type(screen.getByLabelText("Employment types (comma or line separated)"), "full-time");
+    await user.type(screen.getByLabelText("Posted within days"), "14");
+    await user.click(screen.getByRole("button", { name: "Refresh jobs" }));
+
+    expect(client.callTool).toHaveBeenCalledWith("find_jobs", {
+      greenhouse_boards: [],
+      lever_companies: [],
+      ashby_job_boards: ["example"],
+      title_keywords: [],
+      company_keywords: ["Example"],
+      location_keywords: ["Remote"],
+      remote_mode: "remote",
+      minimum_salary: 150000,
+      compensation_currency: "USD",
+      employment_types: ["full-time"],
+      freshness_days: 14
+    });
   });
 });

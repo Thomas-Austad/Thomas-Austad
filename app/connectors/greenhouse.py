@@ -1,14 +1,16 @@
-import httpx
 from bs4 import BeautifulSoup
-from app.config import settings
+from urllib.parse import quote
+
+from app.connectors.http import fetch_provider_json
 from app.models.schemas import JobListing
 
 
 class GreenhouseConnector:
     async def fetch_board(self, board_token: str) -> list[JobListing]:
-        url = f"https://boards-api.greenhouse.io/v1/boards/{board_token}/jobs?content=true"
-        async with httpx.AsyncClient(timeout=settings.connector_timeout_seconds) as client:
-            data = (await client.get(url)).raise_for_status().json()
+        url = f"https://boards-api.greenhouse.io/v1/boards/{quote(board_token, safe='')}/jobs"
+        data = await fetch_provider_json(url, params={"content": "true"})
+        if not isinstance(data, dict):
+            raise ValueError("Greenhouse response is not an object")
         jobs = []
         for item in data.get("jobs", []):
             description = BeautifulSoup(item.get("content", ""), "html.parser").get_text(" ", strip=True)

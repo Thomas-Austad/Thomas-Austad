@@ -8,7 +8,7 @@ from typing import Annotated
 
 from fastapi import FastAPI, File, HTTPException, Request, Response, UploadFile
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 from pydantic import Field
 from app.agents.profile_agent import CandidateProfileAgent
 from app.agents.compensation_agent import CompensationAgent
@@ -16,6 +16,7 @@ from app.agents.match_agent import MatchAgent
 from app.agents.application_agent import ApplicationAgent
 from app.models.schemas import (
     ConfirmedScreeningAnswer,
+    JobSearchFilters,
     ProfileCorrectionRequest,
     ProfileReview,
 )
@@ -52,10 +53,16 @@ class ProfileRequest(BaseModel):
     preferences: dict = Field(default_factory=dict)
 
 
-class JobSearchRequest(BaseModel):
+class JobSearchRequest(JobSearchFilters):
     greenhouse_boards: list[ShortText] = Field(default_factory=list, max_length=25)
     lever_companies: list[ShortText] = Field(default_factory=list, max_length=25)
-    title_keywords: list[ShortText] = Field(default_factory=list, max_length=20)
+    ashby_job_boards: list[ShortText] = Field(default_factory=list, max_length=25)
+
+    @model_validator(mode="after")
+    def require_currency_for_compensation_filter(self) -> "JobSearchRequest":
+        if self.minimum_salary is not None and self.compensation_currency is None:
+            raise ValueError("compensation_currency is required with minimum_salary")
+        return self
 
 
 class ApplicationRequest(BaseModel):
@@ -401,14 +408,15 @@ async def extract_resume(file: UploadFile = File(...)):
 
 @app.post("/jobs/search")
 async def search_jobs(req: JobSearchRequest):
-    result = await JobService().search_known_boards(req.greenhouse_boards, req.lever_companies)
-    found = result.jobs
-    if req.title_keywords:
-        terms = [t.lower() for t in req.title_keywords]
-        found = [j for j in found if any(t in (j.title + " " + j.description).lower() for t in terms)]
-    for job in found:
+    result = await JobService().search_known_boards(
+        req.greenhouse_boards,
+        req.lever_companies,
+        req.ashby_job_boards,
+        req,
+    )
+    for job in result.jobs:
         store.jobs[job.job_id] = job
-    return {"count": len(found), "jobs": found, "provider_errors": result.provider_errors}
+    return {"count": len(result.jobs), "jobs": result.jobs, "provider_errors": result.provider_errors}
 
 
 @app.post("/matches/{candidate_id}/{job_id}")

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, HttpUrl, JsonValue
 
@@ -147,12 +147,27 @@ class JobListing(BaseModel):
 class ProviderSearchError(BaseModel):
     """Safe provider-level failure disclosure for a completed job search."""
 
-    provider: Literal["greenhouse", "lever"]
+    provider: Literal["ashby", "greenhouse", "lever"]
 
 
 class JobSearchResult(BaseModel):
     jobs: list[JobListing]
     provider_errors: list[ProviderSearchError] = []
+
+
+JobSearchFilterText = Annotated[str, Field(min_length=1, max_length=128)]
+EmploymentTypeFilterText = Annotated[str, Field(min_length=1, max_length=64)]
+
+
+class JobSearchFilters(BaseModel):
+    title_keywords: list[JobSearchFilterText] = Field(default_factory=list, max_length=20)
+    company_keywords: list[JobSearchFilterText] = Field(default_factory=list, max_length=20)
+    location_keywords: list[JobSearchFilterText] = Field(default_factory=list, max_length=20)
+    remote_mode: Literal["remote", "hybrid", "onsite"] | None = None
+    minimum_salary: int | None = Field(default=None, ge=0)
+    compensation_currency: str | None = Field(default=None, pattern=r"^[A-Z]{3}$")
+    employment_types: list[EmploymentTypeFilterText] = Field(default_factory=list, max_length=10)
+    freshness_days: int | None = Field(default=None, ge=1, le=365)
 
 
 class ScoreDetail(BaseModel):

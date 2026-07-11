@@ -20,6 +20,7 @@ requests targeting `main`.
 - `OPENAI_MAX_RETRIES` controls SDK-level retries for model calls.
 - `CONNECTOR_TIMEOUT_SECONDS` controls ATS connector HTTP timeouts.
 - `CONNECTOR_MAX_ATTEMPTS` controls read-only connector retry attempts.
+- `CONNECTOR_MAX_RESPONSE_BYTES` bounds each ATS provider response (default: 2 MB).
 - `API_RATE_LIMIT_ENABLED` enables process-local fixed-window API limits.
 - `API_RATE_LIMIT_WINDOW_SECONDS` controls the fixed-window duration.
 - `API_DEFAULT_RATE_LIMIT` controls uncategorized endpoint requests per window.
@@ -31,6 +32,17 @@ requests targeting `main`.
 - `API_WRITE_RATE_LIMIT` controls approval-like write endpoints.
 
 Keep secrets in environment variables or `.env`; do not commit credentials.
+
+## Job source refresh
+
+Job searches are manual refreshes only: each request reads the named public
+Greenhouse, Lever, and Ashby job boards once, deduplicates by source URL, and
+does not schedule background collection. Employer career-page ingestion is not
+supported without a documented, permitted provider API or approved domain.
+
+Filters are applied to the returned normalized postings. A job with no provider
+value for a requested location, remote mode, compensation, employment type, or
+freshness filter is excluded rather than guessed into the result set.
 
 ## Container deployment
 

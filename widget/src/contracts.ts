@@ -124,7 +124,7 @@ export type JobListing = z.infer<typeof jobListingSchema>;
 export const jobSearchResultSchema = z.object({
   count: z.number().int().nonnegative(),
   jobs: z.array(jobListingSchema),
-  provider_errors: z.array(z.object({ provider: z.enum(["greenhouse", "lever"]) })).default([])
+  provider_errors: z.array(z.object({ provider: z.enum(["ashby", "greenhouse", "lever"]) })).default([])
 });
 export type JobSearchResult = z.infer<typeof jobSearchResultSchema>;
 
@@ -165,7 +165,19 @@ const sourceListSchema = z.array(z.string().trim().min(1).max(256)).max(25);
 export const jobSearchInputSchema = z.object({
   greenhouse_boards: sourceListSchema,
   lever_companies: sourceListSchema,
-  title_keywords: z.array(z.string().trim().min(1).max(256)).max(20)
+  ashby_job_boards: sourceListSchema,
+  title_keywords: z.array(z.string().trim().min(1).max(256)).max(20),
+  company_keywords: z.array(z.string().trim().min(1).max(256)).max(20),
+  location_keywords: z.array(z.string().trim().min(1).max(256)).max(20),
+  remote_mode: z.enum(["remote", "hybrid", "onsite"]).optional(),
+  minimum_salary: z.number().int().nonnegative().optional(),
+  compensation_currency: z.string().regex(/^[A-Z]{3}$/).optional(),
+  employment_types: z.array(z.string().trim().min(1).max(128)).max(10),
+  freshness_days: z.number().int().min(1).max(365).optional()
+}).superRefine((input, context) => {
+  if (input.minimum_salary !== undefined && input.compensation_currency === undefined) {
+    context.addIssue({ code: "custom", message: "Compensation currency is required with a minimum salary.", path: ["compensation_currency"] });
+  }
 });
 export type JobSearchInput = z.infer<typeof jobSearchInputSchema>;
 

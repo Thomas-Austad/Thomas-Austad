@@ -91,11 +91,33 @@ async def correct_candidate_profile(
 
 
 @mcp.tool(meta=WIDGET_TEMPLATE_META)
-async def find_jobs(greenhouse_boards: list[str], lever_companies: list[str], title_keywords: list[str] | None = None):
-    """Retrieve active jobs from supported ATS boards."""
-    return await search_jobs(JobSearchRequest(greenhouse_boards=greenhouse_boards,
-                                              lever_companies=lever_companies,
-                                              title_keywords=title_keywords or []))
+async def find_jobs(
+    greenhouse_boards: list[str],
+    lever_companies: list[str],
+    ashby_job_boards: list[str] | None = None,
+    title_keywords: list[str] | None = None,
+    company_keywords: list[str] | None = None,
+    location_keywords: list[str] | None = None,
+    remote_mode: str | None = None,
+    minimum_salary: int | None = None,
+    compensation_currency: str | None = None,
+    employment_types: list[str] | None = None,
+    freshness_days: int | None = None,
+):
+    """Manually refresh supported public ATS boards and apply read-only job filters."""
+    return await search_jobs(JobSearchRequest(
+        greenhouse_boards=greenhouse_boards,
+        lever_companies=lever_companies,
+        ashby_job_boards=ashby_job_boards or [],
+        title_keywords=title_keywords or [],
+        company_keywords=company_keywords or [],
+        location_keywords=location_keywords or [],
+        remote_mode=remote_mode,
+        minimum_salary=minimum_salary,
+        compensation_currency=compensation_currency,
+        employment_types=employment_types or [],
+        freshness_days=freshness_days,
+    ))
 
 
 @mcp.tool(meta=WIDGET_TEMPLATE_META)

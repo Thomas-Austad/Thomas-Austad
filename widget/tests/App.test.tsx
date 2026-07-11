@@ -125,7 +125,7 @@ describe("App", () => {
     render(<App applicationClient={applicationClient} jobClient={jobClient} />);
 
     await user.click(screen.getByRole("tab", { name: "Jobs" }));
-    await user.click(screen.getByRole("button", { name: "Search jobs" }));
+    await user.click(screen.getByRole("button", { name: "Refresh jobs" }));
     await user.click(await screen.findByRole("button", { name: "Inspect job" }));
     await user.type(screen.getByLabelText("Candidate ID"), "candidate-1");
     await user.click(screen.getByRole("button", { name: "Prepare application for review" }));

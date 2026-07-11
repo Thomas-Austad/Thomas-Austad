@@ -7,7 +7,6 @@ from app import store
 from app.main import app
 from app.models.schemas import (
     Evidence,
-    JobListing,
     JobSearchResult,
     ProviderSearchError,
     ScreeningQuestionReview,
@@ -168,9 +167,11 @@ def test_core_api_workflow_uses_stored_state(
         assert "Python" in resume_text
         return sample_profile
 
-    async def search_known_boards(self, greenhouse_boards, lever_companies):
+    async def search_known_boards(self, greenhouse_boards, lever_companies, ashby_job_boards, filters):
         assert greenhouse_boards == ["example"]
         assert lever_companies == []
+        assert ashby_job_boards == []
+        assert filters.title_keywords == ["backend"]
         return JobSearchResult(jobs=[sample_job])
 
     async def match_run(self, profile, job):
@@ -446,17 +447,9 @@ def test_duplicate_approval_is_rejected(sample_application, tmp_path, monkeypatc
 
 
 def test_job_search_title_keywords_filter_results(monkeypatch, sample_job):
-    other_job = JobListing(
-        job_id="lever:example:2",
-        source="lever",
-        source_url="https://example.com/jobs/2",
-        company="Example Co",
-        title="Product Designer",
-        description="Design user-facing workflows.",
-    )
-
-    async def search_known_boards(self, greenhouse_boards, lever_companies):
-        return JobSearchResult(jobs=[sample_job, other_job])
+    async def search_known_boards(self, greenhouse_boards, lever_companies, ashby_job_boards, filters):
+        assert filters.title_keywords == ["backend"]
+        return JobSearchResult(jobs=[sample_job])
 
     monkeypatch.setattr("app.main.JobService.search_known_boards", search_known_boards)
 
@@ -472,7 +465,7 @@ def test_job_search_title_keywords_filter_results(monkeypatch, sample_job):
 
 
 def test_job_search_returns_safe_provider_errors_with_successful_jobs(monkeypatch, sample_job):
-    async def search_known_boards(self, greenhouse_boards, lever_companies):
+    async def search_known_boards(self, greenhouse_boards, lever_companies, ashby_job_boards, filters):
         return JobSearchResult(
             jobs=[sample_job],
             provider_errors=[ProviderSearchError(provider="lever")],
@@ -486,6 +479,46 @@ def test_job_search_returns_safe_provider_errors_with_successful_jobs(monkeypatc
     assert response.json()["jobs"][0]["job_id"] == sample_job.job_id
     assert response.json()["provider_errors"] == [{"provider": "lever"}]
     assert "provider unavailable" not in response.text
+
+
+def test_job_search_passes_all_approved_filters_and_manual_ashby_refresh(monkeypatch, sample_job):
+    async def search_known_boards(self, greenhouse_boards, lever_companies, ashby_job_boards, filters):
+        assert greenhouse_boards == []
+        assert lever_companies == []
+        assert ashby_job_boards == ["example"]
+        assert filters.company_keywords == ["Example"]
+        assert filters.location_keywords == ["Remote"]
+        assert filters.remote_mode == "remote"
+        assert filters.minimum_salary == 150000
+        assert filters.compensation_currency == "USD"
+        assert filters.employment_types == ["full-time"]
+        assert filters.freshness_days == 14
+        return JobSearchResult(jobs=[sample_job])
+
+    monkeypatch.setattr("app.main.JobService.search_known_boards", search_known_boards)
+
+    response = local_client().post(
+        "/jobs/search",
+        json={
+            "ashby_job_boards": ["example"],
+            "company_keywords": ["Example"],
+            "location_keywords": ["Remote"],
+            "remote_mode": "remote",
+            "minimum_salary": 150000,
+            "compensation_currency": "USD",
+            "employment_types": ["full-time"],
+            "freshness_days": 14,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["count"] == 1
+
+
+def test_job_search_rejects_compensation_filter_without_currency():
+    response = local_client().post("/jobs/search", json={"minimum_salary": 150000})
+
+    assert response.status_code == 422
 
 
 def test_model_backed_endpoint_rate_limit_returns_safe_error(monkeypatch, sample_profile):
