@@ -11,6 +11,7 @@ interface JobReviewViewProps {
   client?: JobToolClient;
   onApplicationPrepared?: (applicationPackage: ApplicationPackage) => void;
   candidateId?: string;
+  browserMode?: boolean;
 }
 
 function toList(value: string): string[] {
@@ -31,10 +32,11 @@ function formatMoney(value: number | null | undefined, currency: string): string
     : new Intl.NumberFormat("en-US", { style: "currency", currency, maximumFractionDigits: 0 }).format(value);
 }
 
-export function JobReviewView({ applicationClient, candidateId: suppliedCandidateId, client, onApplicationPrepared }: JobReviewViewProps) {
+export function JobReviewView({ applicationClient, browserMode = false, candidateId: suppliedCandidateId, client, onApplicationPrepared }: JobReviewViewProps) {
   const [greenhouseBoards, setGreenhouseBoards] = useState("");
   const [leverCompanies, setLeverCompanies] = useState("");
   const [ashbyJobBoards, setAshbyJobBoards] = useState("");
+  const [publicJobBoardUrls, setPublicJobBoardUrls] = useState("");
   const [keywords, setKeywords] = useState("");
   const [companyKeywords, setCompanyKeywords] = useState("");
   const [locationKeywords, setLocationKeywords] = useState("");
@@ -71,6 +73,7 @@ export function JobReviewView({ applicationClient, candidateId: suppliedCandidat
         greenhouse_boards: toList(greenhouseBoards),
         lever_companies: toList(leverCompanies),
         ashby_job_boards: toList(ashbyJobBoards),
+        public_job_board_urls: toList(publicJobBoardUrls),
         title_keywords: toList(keywords),
         company_keywords: toList(companyKeywords),
         location_keywords: toList(locationKeywords),
@@ -86,7 +89,7 @@ export function JobReviewView({ applicationClient, candidateId: suppliedCandidat
       setCompensation(undefined);
       if (nextResult.jobs.length === 0) {
         setStatus("empty");
-        setDetail("No jobs matched this manual refresh. Update the source names or filters and try again.");
+        setDetail("No jobs matched this refresh. Update the careers links or filters and try again.");
       } else {
         setStatus("ready");
         setDetail("");
@@ -110,7 +113,7 @@ export function JobReviewView({ applicationClient, candidateId: suppliedCandidat
   const reviewMatch = async () => {
     if (!client || !selectedJob || !candidateId.trim()) {
       setStatus("error");
-      setDetail("Enter a candidate ID before reviewing a match.");
+      setDetail("Choose a profile before reviewing a match.");
       return;
     }
     setStatus("loading");
@@ -129,7 +132,7 @@ export function JobReviewView({ applicationClient, candidateId: suppliedCandidat
     event.preventDefault();
     if (!client || !candidateId.trim() || !roleFamily.trim() || !geography.trim()) {
       setStatus("error");
-      setDetail("Enter a candidate ID, role family, and geography before estimating compensation.");
+      setDetail("Choose a profile, role family, and geography before estimating compensation.");
       return;
     }
     setStatus("loading");
@@ -147,7 +150,7 @@ export function JobReviewView({ applicationClient, candidateId: suppliedCandidat
   const prepareApplication = async () => {
     if (!applicationClient || !selectedJob || !candidateId.trim()) {
       setStatus("error");
-      setDetail("Enter a candidate ID before preparing an application package.");
+      setDetail("Choose a profile before preparing an application package.");
       return;
     }
     setStatus("loading");
@@ -168,12 +171,14 @@ export function JobReviewView({ applicationClient, candidateId: suppliedCandidat
       <h2 id="job-view-title">Jobs and fit review</h2>
       <p>Manually refresh supported sources, then inspect the job text, match explanation, and compensation assumptions before preparing an application.</p>
       <form className="search-form" onSubmit={runSearch}>
-        <label htmlFor="greenhouse-boards">Greenhouse boards (comma or line separated)</label>
-        <textarea id="greenhouse-boards" maxLength={6_424} onChange={(event) => setGreenhouseBoards(event.target.value)} value={greenhouseBoards} />
-        <label htmlFor="lever-companies">Lever companies (comma or line separated)</label>
-        <textarea id="lever-companies" maxLength={6_424} onChange={(event) => setLeverCompanies(event.target.value)} value={leverCompanies} />
-        <label htmlFor="ashby-job-boards">Ashby job boards (comma or line separated)</label>
-        <textarea id="ashby-job-boards" maxLength={6_424} onChange={(event) => setAshbyJobBoards(event.target.value)} value={ashbyJobBoards} />
+        {browserMode ? <><label htmlFor="public-job-board-urls">Public careers-page links (one per line)</label>
+          <textarea id="public-job-board-urls" maxLength={6_424} onChange={(event) => setPublicJobBoardUrls(event.target.value)} placeholder="https://boards.greenhouse.io/example" value={publicJobBoardUrls} />
+          <p>Use a Greenhouse, Lever, or Ashby public careers-board link. Talent Advisor will not visit any other site.</p></> : <><label htmlFor="greenhouse-boards">Greenhouse boards (comma or line separated)</label>
+          <textarea id="greenhouse-boards" maxLength={6_424} onChange={(event) => setGreenhouseBoards(event.target.value)} value={greenhouseBoards} />
+          <label htmlFor="lever-companies">Lever companies (comma or line separated)</label>
+          <textarea id="lever-companies" maxLength={6_424} onChange={(event) => setLeverCompanies(event.target.value)} value={leverCompanies} />
+          <label htmlFor="ashby-job-boards">Ashby job boards (comma or line separated)</label>
+          <textarea id="ashby-job-boards" maxLength={6_424} onChange={(event) => setAshbyJobBoards(event.target.value)} value={ashbyJobBoards} /></>}
         <label htmlFor="job-keywords">Title keywords (comma or line separated)</label>
         <input id="job-keywords" maxLength={5_139} onChange={(event) => setKeywords(event.target.value)} value={keywords} />
         <label htmlFor="company-keywords">Company keywords (comma or line separated)</label>

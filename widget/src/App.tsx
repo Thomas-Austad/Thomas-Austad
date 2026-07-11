@@ -26,9 +26,11 @@ interface AppProps {
   jobClient?: JobToolClient;
   profileClient?: ProfileToolClient;
   candidateId?: string;
+  browserMode?: boolean;
+  onDownloadResume?: (applicationId: string) => Promise<void>;
 }
 
-export function App({ applicationClient, candidateId, jobClient, profileClient }: AppProps) {
+export function App({ applicationClient, browserMode = false, candidateId, jobClient, onDownloadResume, profileClient }: AppProps) {
   const [route, setRoute] = useState<Route>("profile");
   const [preparedPackage, setPreparedPackage] = useState<ApplicationPackage>();
 
@@ -61,14 +63,14 @@ export function App({ applicationClient, candidateId, jobClient, profileClient }
           <JobReviewView
             applicationClient={applicationClient}
             client={jobClient}
-            candidateId={candidateId}
+            browserMode={browserMode} candidateId={candidateId}
             onApplicationPrepared={(applicationPackage) => {
               setPreparedPackage(applicationPackage);
               setRoute("applications");
             }}
           />
         ) : route === "applications" ? (
-          <ApplicationReviewView client={applicationClient} preparedPackage={preparedPackage} />
+          <ApplicationReviewView browserMode={browserMode} client={applicationClient} onDownloadResume={onDownloadResume} preparedPackage={preparedPackage} />
         ) : (
           <>
             <h2>{navigation.find((item) => item.route === route)?.label}</h2>

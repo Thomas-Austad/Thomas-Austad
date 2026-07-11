@@ -123,7 +123,7 @@ describe("JobReviewView", () => {
 
     await user.click(screen.getByRole("button", { name: "Refresh jobs" }));
 
-    expect(await screen.findByRole("status")).toHaveTextContent("No jobs matched this manual refresh");
+    expect(await screen.findByRole("status")).toHaveTextContent("No jobs matched this refresh");
   });
 
   it("keeps existing results when a later search fails", async () => {
@@ -220,6 +220,7 @@ describe("JobReviewView", () => {
       greenhouse_boards: [],
       lever_companies: [],
       ashby_job_boards: ["example"],
+      public_job_board_urls: [],
       title_keywords: [],
       company_keywords: ["Example"],
       location_keywords: ["Remote"],

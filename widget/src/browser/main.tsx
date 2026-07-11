@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 
 import { App } from "../App";
 import { RestToolClient } from "./restClient";
+import { ConfirmationDialog } from "../components/ConfirmationDialog";
 import "../styles.css";
 
 function BrowserWorkspace() {
@@ -57,7 +58,25 @@ function BrowserWorkspace() {
       <p aria-live="polite" role="status">{status}</p></main>;
   }
   const client = new RestToolClient(csrfToken);
-  return <App applicationClient={client} candidateId={candidateId} jobClient={client} profileClient={client} />;
+  return <><App applicationClient={client} browserMode candidateId={candidateId} jobClient={client} onDownloadResume={(applicationId) => client.downloadResume(applicationId)} profileClient={client} />
+    <PrivacyControls candidateId={candidateId} client={client} onDeleted={() => setCandidateId(undefined)} /></>;
+}
+
+function PrivacyControls({ candidateId, client, onDeleted }: { candidateId: string; client: RestToolClient; onDeleted: () => void }) {
+  const [dueCount, setDueCount] = useState<number>();
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmPurge, setConfirmPurge] = useState(false);
+  const [status, setStatus] = useState("");
+  return <section className="widget-shell" aria-labelledby="privacy-controls-title">
+    <h2 id="privacy-controls-title">Privacy and data controls</h2>
+    <p>These actions affect only your local Talent Advisor data. They do not contact an employer or submit an application.</p>
+    <button type="button" onClick={() => void client.retentionReview().then((count) => { setDueCount(count); setStatus(count ? `${count} saved profile${count === 1 ? " is" : "s are"} due for deletion.` : "No saved profiles are due for deletion."); }).catch(() => setStatus("Your saved-data review could not be loaded."))}>Review saved-data retention</button>
+    {dueCount ? <button type="button" onClick={() => setConfirmPurge(true)}>Review retention purge</button> : null}
+    <button type="button" onClick={() => setConfirmDelete(true)}>Delete current profile</button>
+    <p aria-live="polite" role="status">{status}</p>
+    <ConfirmationDialog description="Delete your current local profile and its saved evidence? This cannot be undone and does not submit an application." onCancel={() => setConfirmDelete(false)} onConfirm={() => { setConfirmDelete(false); void client.callTool("delete_candidate_profile", { candidate_id: candidateId }).then(() => { setStatus("Your current local profile was deleted."); onDeleted(); }).catch(() => setStatus("Your current profile could not be deleted.")); }} open={confirmDelete} title="Confirm profile deletion" />
+    <ConfirmationDialog description={`Delete ${dueCount ?? 0} saved profile${dueCount === 1 ? "" : "s"} that are past the retention period? This cannot be undone.`} onCancel={() => setConfirmPurge(false)} onConfirm={() => { setConfirmPurge(false); void client.purgeRetention().then(() => { setDueCount(0); setStatus("Due saved profiles were deleted."); }).catch(() => setStatus("The saved-data purge could not be completed.")); }} open={confirmPurge} title="Confirm retention purge" />
+  </section>;
 }
 
 createRoot(document.getElementById("root")!).render(<BrowserWorkspace />);

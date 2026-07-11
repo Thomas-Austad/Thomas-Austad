@@ -49,6 +49,11 @@ token in the ordinary user flow.
    employer page. The handoff does not transfer credentials, upload documents,
    complete a form, or report a submission.
 
+Use **Privacy and data controls** to review retention, delete your current
+local profile, or purge profiles that are due for deletion. Each destructive
+action shows its exact local effect and asks for confirmation; it never affects
+an employer account or application.
+
 ## Safe repeat runs and recovery
 
 Opening the launcher again is safe. It preserves existing settings and private

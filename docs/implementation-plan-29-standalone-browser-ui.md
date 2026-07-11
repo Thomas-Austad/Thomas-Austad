@@ -44,6 +44,18 @@ bearer authentication and all browser requests remain loopback-only.
 5. Document local operation, launcher integration, privacy assumptions, and the
    explicit distinction between local approval, browser handoff, and submission.
 
+## Completion gaps addressed after initial delivery
+
+- Browser users provide validated public careers-board links rather than provider
+  board identifiers; the server parses only the supported HTTPS hosts before
+  passing a bounded board key to a connector.
+- DOCX export, profile deletion, and retention purge are visible browser actions
+  with target-specific confirmation. The server independently enforces browser
+  confirmation for export and continues to enforce confirmation plus CSRF for
+  destructive privacy actions.
+- The browser mode hides implementation identifiers needed by the MCP widget,
+  while retaining the widget's existing typed contracts and safety behavior.
+
 ## Validation
 
 - Focused browser-session and API tests.

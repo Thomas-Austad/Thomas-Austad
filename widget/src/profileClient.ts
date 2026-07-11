@@ -6,7 +6,7 @@ import {
 } from "./contracts";
 
 export interface ProfileToolClient {
-  callTool(name: "review_candidate_profile" | "correct_candidate_profile", args: Record<string, unknown>): Promise<unknown>;
+  callTool(name: "review_candidate_profile" | "correct_candidate_profile" | "delete_candidate_profile", args: Record<string, unknown>): Promise<unknown>;
 }
 
 export async function loadProfileReview(client: ProfileToolClient, candidateId: string): Promise<ProfileReview> {

@@ -13,8 +13,10 @@ import { ConfirmationDialog } from "./ConfirmationDialog";
 import { StatusPanel } from "./StatusPanel";
 
 interface ApplicationReviewViewProps {
+  browserMode?: boolean;
   client?: ApplicationToolClient;
   preparedPackage?: ApplicationPackage;
+  onDownloadResume?: (applicationId: string) => Promise<void>;
 }
 
 interface PendingScreeningAnswer {
@@ -26,12 +28,13 @@ function newIdempotencyKey(): string {
   return crypto.randomUUID();
 }
 
-export function ApplicationReviewView({ client, preparedPackage }: ApplicationReviewViewProps) {
+export function ApplicationReviewView({ browserMode = false, client, onDownloadResume, preparedPackage }: ApplicationReviewViewProps) {
   const [applicationId, setApplicationId] = useState("");
   const [packageReview, setPackageReview] = useState<ApplicationPackage>();
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [pendingScreening, setPendingScreening] = useState<PendingScreeningAnswer>();
   const [approvalConfirmationOpen, setApprovalConfirmationOpen] = useState(false);
+  const [exportConfirmationOpen, setExportConfirmationOpen] = useState(false);
   const [handoffPreview, setHandoffPreview] = useState<BrowserHandoffPreview>();
   const [browserHandoff, setBrowserHandoff] = useState<BrowserHandoff>();
   const [pendingAction, setPendingAction] = useState<"approve" | "handoff" | "handoff_preview" | "load" | "resolve">();
@@ -176,6 +179,24 @@ export function ApplicationReviewView({ client, preparedPackage }: ApplicationRe
     }
   };
 
+  const confirmExport = async () => {
+    if (!packageReview || !onDownloadResume) return;
+    setExportConfirmationOpen(false);
+    setPendingAction("load");
+    setStatus("loading");
+    setDetail("Preparing your confirmed DOCX download.");
+    try {
+      await onDownloadResume(packageReview.application_id);
+      setStatus("ready");
+      setDetail("Your DOCX download is ready. Nothing was submitted to an employer.");
+    } catch {
+      setStatus("error");
+      setDetail("The DOCX file could not be prepared. No application was submitted.");
+    } finally {
+      setPendingAction(undefined);
+    }
+  };
+
   const approvalBlocked = !packageReview
     || packageReview.status !== "prepared"
     || packageReview.requires_user_input.length > 0
@@ -185,7 +206,7 @@ export function ApplicationReviewView({ client, preparedPackage }: ApplicationRe
     <section aria-labelledby="application-view-title" className="application-view">
       <h2 id="application-view-title">Application review and approval</h2>
       <p>Review a prepared package before approval. Approval is local only and is not an application submission.</p>
-      <form className="application-load-form" onSubmit={load}>
+      {!browserMode ? <form className="application-load-form" onSubmit={load}>
         <label htmlFor="application-id">Application package ID</label>
         <input
           autoComplete="off"
@@ -196,7 +217,7 @@ export function ApplicationReviewView({ client, preparedPackage }: ApplicationRe
           value={applicationId}
         />
         <button className="primary" disabled={pendingAction !== undefined} type="submit">Load prepared package</button>
-      </form>
+      </form> : null}
       <StatusPanel detail={detail} kind={status} />
       {packageReview ? (
         <PackageDetails
@@ -207,10 +228,18 @@ export function ApplicationReviewView({ client, preparedPackage }: ApplicationRe
           onApprove={() => setApprovalConfirmationOpen(true)}
           onStartBrowserHandoff={() => void startBrowserHandoff()}
           onReviewAnswer={(question) => setPendingScreening({ question, answer: answers[question] ?? "" })}
+          onExport={onDownloadResume ? () => setExportConfirmationOpen(true) : undefined}
           packageReview={packageReview}
           pendingAction={pendingAction}
         />
       ) : null}
+      <ConfirmationDialog
+        description="Download this tailored resume as a DOCX file? This downloads only a local copy and does not submit an application."
+        onCancel={() => setExportConfirmationOpen(false)}
+        onConfirm={() => void confirmExport()}
+        open={exportConfirmationOpen}
+        title="Confirm DOCX download"
+      />
       <ConfirmationDialog
         description={pendingScreening ? `Save this answer for the screening question “${pendingScreening.question}” as your directly confirmed response? This does not submit an application.` : ""}
         onCancel={() => setPendingScreening(undefined)}
@@ -244,6 +273,7 @@ interface PackageDetailsProps {
   onApprove: () => void;
   onStartBrowserHandoff: () => void;
   onReviewAnswer: (question: string) => void;
+  onExport?: () => void;
   packageReview: ApplicationPackage;
   pendingAction?: "approve" | "handoff" | "handoff_preview" | "load" | "resolve";
 }
@@ -256,6 +286,7 @@ function PackageDetails({
   onApprove,
   onStartBrowserHandoff,
   onReviewAnswer,
+  onExport,
   packageReview,
   pendingAction
 }: PackageDetailsProps) {
@@ -270,6 +301,7 @@ function PackageDetails({
       <section aria-labelledby="resume-title">
         <h3 id="resume-title">Tailored resume</h3>
         <pre className="document-preview">{packageReview.tailored_resume_markdown}</pre>
+        {onExport ? <button disabled={pendingAction !== undefined} onClick={onExport} type="button">Download DOCX resume</button> : null}
       </section>
       <section aria-labelledby="cover-letter-title">
         <h3 id="cover-letter-title">Cover letter</h3>

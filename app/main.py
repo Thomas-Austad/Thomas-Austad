@@ -2,6 +2,7 @@ import secrets
 import uuid
 import io
 import json
+import re
 import zipfile
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -72,11 +73,21 @@ class JobSearchRequest(JobSearchFilters):
     greenhouse_boards: list[ShortText] = Field(default_factory=list, max_length=25)
     lever_companies: list[ShortText] = Field(default_factory=list, max_length=25)
     ashby_job_boards: list[ShortText] = Field(default_factory=list, max_length=25)
+    public_job_board_urls: list[str] = Field(default_factory=list, max_length=25)
 
     @model_validator(mode="after")
     def require_currency_for_compensation_filter(self) -> "JobSearchRequest":
         if self.minimum_salary is not None and self.compensation_currency is None:
             raise ValueError("compensation_currency is required with minimum_salary")
+        parsed_boards: dict[str, list[str]] = {"greenhouse": [], "lever": [], "ashby": []}
+        for board_url in self.public_job_board_urls:
+            provider, board_key = _parse_public_job_board_url(board_url)
+            parsed_boards[provider].append(board_key)
+        self.greenhouse_boards = list(dict.fromkeys([*self.greenhouse_boards, *parsed_boards["greenhouse"]]))
+        self.lever_companies = list(dict.fromkeys([*self.lever_companies, *parsed_boards["lever"]]))
+        self.ashby_job_boards = list(dict.fromkeys([*self.ashby_job_boards, *parsed_boards["ashby"]]))
+        if any(len(boards) > 25 for boards in (self.greenhouse_boards, self.lever_companies, self.ashby_job_boards)):
+            raise ValueError("No more than 25 boards per provider may be searched")
         return self
 
 
@@ -104,6 +115,33 @@ class BrowserHandoffRequest(BaseModel):
 
 class BrowserBootstrapRequest(BaseModel):
     bootstrap_token: str = Field(min_length=32, max_length=256)
+
+
+_PUBLIC_JOB_BOARD_HOSTS = {
+    "boards.greenhouse.io": "greenhouse",
+    "job-boards.greenhouse.io": "greenhouse",
+    "jobs.lever.co": "lever",
+    "jobs.ashbyhq.com": "ashby",
+}
+_PUBLIC_JOB_BOARD_KEY = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
+
+
+def _parse_public_job_board_url(board_url: str) -> tuple[str, str]:
+    """Reduce an untrusted public careers URL to a supported connector board key."""
+    parsed = urlsplit(board_url)
+    provider = _PUBLIC_JOB_BOARD_HOSTS.get(parsed.hostname or "")
+    path_segments = [segment for segment in parsed.path.split("/") if segment]
+    if (
+        parsed.scheme != "https"
+        or provider is None
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.port not in (None, 443)
+        or len(path_segments) != 1
+        or not _PUBLIC_JOB_BOARD_KEY.fullmatch(path_segments[0])
+    ):
+        raise ValueError("Use a supported public careers-board link")
+    return provider, path_segments[0]
 
 
 def _is_public_browser_path(path: str) -> bool:
@@ -705,7 +743,8 @@ def resolve_screening_question(
 
 
 @app.get("/applications/{application_id}/resume.docx")
-def download_resume(application_id: str):
+def download_resume(application_id: str, request: Request):
+    _require_browser_confirmation(request, "DOCX export")
     package = store.applications.get(application_id)
     if not package:
         raise HTTPException(404, "Application not found")

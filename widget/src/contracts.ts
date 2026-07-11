@@ -163,11 +163,20 @@ export const compensationEstimateSchema = z.object({
 export type CompensationEstimate = z.infer<typeof compensationEstimateSchema>;
 
 const sourceListSchema = z.array(z.string().trim().min(1).max(256)).max(25);
+const publicBoardUrlSchema = z.string().url().max(2_000).refine((value) => {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && ["boards.greenhouse.io", "job-boards.greenhouse.io", "jobs.lever.co", "jobs.ashbyhq.com"].includes(url.hostname);
+  } catch {
+    return false;
+  }
+}, "Use a supported public careers-board link.");
 
 export const jobSearchInputSchema = z.object({
   greenhouse_boards: sourceListSchema,
   lever_companies: sourceListSchema,
   ashby_job_boards: sourceListSchema,
+  public_job_board_urls: z.array(publicBoardUrlSchema).max(25).default([]),
   title_keywords: z.array(z.string().trim().min(1).max(256)).max(20),
   company_keywords: z.array(z.string().trim().min(1).max(256)).max(20),
   location_keywords: z.array(z.string().trim().min(1).max(256)).max(20),
