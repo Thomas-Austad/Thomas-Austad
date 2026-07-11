@@ -1,4 +1,4 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 
 import type { ApplicationPackage } from "../contracts";
 import {
@@ -12,6 +12,7 @@ import { StatusPanel } from "./StatusPanel";
 
 interface ApplicationReviewViewProps {
   client?: ApplicationToolClient;
+  preparedPackage?: ApplicationPackage;
 }
 
 interface PendingScreeningAnswer {
@@ -23,7 +24,7 @@ function newIdempotencyKey(): string {
   return crypto.randomUUID();
 }
 
-export function ApplicationReviewView({ client }: ApplicationReviewViewProps) {
+export function ApplicationReviewView({ client, preparedPackage }: ApplicationReviewViewProps) {
   const [applicationId, setApplicationId] = useState("");
   const [packageReview, setPackageReview] = useState<ApplicationPackage>();
   const [answers, setAnswers] = useState<Record<string, string>>({});
@@ -32,6 +33,17 @@ export function ApplicationReviewView({ client }: ApplicationReviewViewProps) {
   const [pendingAction, setPendingAction] = useState<"approve" | "load" | "resolve">();
   const [status, setStatus] = useState<"empty" | "error" | "loading" | "ready">("ready");
   const [detail, setDetail] = useState("");
+
+  useEffect(() => {
+    if (!preparedPackage) {
+      return;
+    }
+    setApplicationId(preparedPackage.application_id);
+    setPackageReview(preparedPackage);
+    setAnswers({});
+    setStatus("ready");
+    setDetail("Prepared for your review. This has not been approved or submitted.");
+  }, [preparedPackage]);
 
   const load = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();

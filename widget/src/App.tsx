@@ -4,6 +4,7 @@ import { ApplicationReviewView } from "./components/ApplicationReviewView";
 import { ProfileReviewView } from "./components/ProfileReviewView";
 import { JobReviewView } from "./components/JobReviewView";
 import type { ApplicationToolClient } from "./applicationClient";
+import type { ApplicationPackage } from "./contracts";
 import type { Route } from "./contracts";
 import type { JobToolClient } from "./jobClient";
 import type { ProfileToolClient } from "./profileClient";
@@ -28,6 +29,7 @@ interface AppProps {
 
 export function App({ applicationClient, jobClient, profileClient }: AppProps) {
   const [route, setRoute] = useState<Route>("profile");
+  const [preparedPackage, setPreparedPackage] = useState<ApplicationPackage>();
 
   return (
     <main className="widget-shell">
@@ -55,9 +57,16 @@ export function App({ applicationClient, jobClient, profileClient }: AppProps) {
         {route === "profile" ? (
           <ProfileReviewView client={profileClient} />
         ) : route === "jobs" ? (
-          <JobReviewView client={jobClient} />
+          <JobReviewView
+            applicationClient={applicationClient}
+            client={jobClient}
+            onApplicationPrepared={(applicationPackage) => {
+              setPreparedPackage(applicationPackage);
+              setRoute("applications");
+            }}
+          />
         ) : route === "applications" ? (
-          <ApplicationReviewView client={applicationClient} />
+          <ApplicationReviewView client={applicationClient} preparedPackage={preparedPackage} />
         ) : (
           <>
             <h2>{navigation.find((item) => item.route === route)?.label}</h2>

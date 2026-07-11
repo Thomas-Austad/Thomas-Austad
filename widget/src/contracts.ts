@@ -204,6 +204,8 @@ export const applicationPackageSchema = z.object({
 export type ApplicationPackage = z.infer<typeof applicationPackageSchema>;
 
 export const applicationIdSchema = z.string().trim().min(1).max(128);
+export const candidateIdSchema = z.string().trim().min(1).max(128);
+export const jobIdSchema = z.string().trim().min(1).max(2_000);
 export const screeningAnswerInputSchema = z.object({
   application_id: applicationIdSchema,
   question: z.string().trim().min(1).max(1_000),

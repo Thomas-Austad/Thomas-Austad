@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import { JobReviewView } from "../src/components/JobReviewView";
+import type { ApplicationToolClient } from "../src/applicationClient";
 import type { JobToolClient } from "../src/jobClient";
 
 const jobSearchResult = {
@@ -25,6 +26,19 @@ const jobSearchResult = {
   }],
   provider_errors: [{ provider: "lever" }]
 };
+
+const preparedPackage = {
+  application_id: "application-123",
+  candidate_id: "candidate-1",
+  job_id: "greenhouse:example:1",
+  tailored_resume_markdown: "# Avery Example",
+  cover_letter: "Cover letter",
+  factual_warnings: [],
+  requires_user_input: [],
+  unresolved_screening_questions: [],
+  confirmed_screening_answers: [],
+  status: "prepared"
+} as const;
 
 function makeClient(): JobToolClient {
   return {
@@ -125,5 +139,64 @@ describe("JobReviewView", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Existing results remain available");
     expect(screen.getByText("Senior Backend Engineer")).toBeInTheDocument();
+  });
+
+  it("prepares the selected job for review without approving or submitting it", async () => {
+    const user = userEvent.setup();
+    const onApplicationPrepared = vi.fn();
+    const applicationClient: ApplicationToolClient = { callTool: vi.fn().mockResolvedValue(preparedPackage) };
+    render(
+      <JobReviewView
+        applicationClient={applicationClient}
+        client={makeClient()}
+        onApplicationPrepared={onApplicationPrepared}
+      />
+    );
+
+    await user.click(screen.getByRole("button", { name: "Search jobs" }));
+    await user.click(await screen.findByRole("button", { name: "Inspect job" }));
+    expect(screen.getByRole("button", { name: "Prepare application for review" })).toBeDisabled();
+    await user.type(screen.getByLabelText("Candidate ID"), "candidate-1");
+    await user.click(screen.getByRole("button", { name: "Prepare application for review" }));
+
+    expect(applicationClient.callTool).toHaveBeenCalledWith("prepare_job_application", {
+      candidate_id: "candidate-1",
+      job_id: "greenhouse:example:1",
+      screening_questions: []
+    });
+    expect(onApplicationPrepared).toHaveBeenCalledWith(preparedPackage);
+    expect(screen.getByText(/does not approve or submit/i)).toBeInTheDocument();
+  });
+
+  it("keeps the selected job visible when package preparation fails safely", async () => {
+    const user = userEvent.setup();
+    const applicationClient: ApplicationToolClient = { callTool: vi.fn().mockResolvedValue({ malformed: true }) };
+    render(<JobReviewView applicationClient={applicationClient} client={makeClient()} />);
+
+    await user.click(screen.getByRole("button", { name: "Search jobs" }));
+    await user.click(await screen.findByRole("button", { name: "Inspect job" }));
+    await user.type(screen.getByLabelText("Candidate ID"), "candidate-1");
+    await user.click(screen.getByRole("button", { name: "Prepare application for review" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("could not be prepared");
+    expect(screen.getByRole("heading", { name: /Senior Backend Engineer at Example Co/ })).toBeInTheDocument();
+  });
+
+  it("prevents duplicate preparation while the package is pending", async () => {
+    const user = userEvent.setup();
+    let resolvePreparation: (value: typeof preparedPackage) => void = () => undefined;
+    const applicationClient: ApplicationToolClient = {
+      callTool: vi.fn().mockReturnValue(new Promise<typeof preparedPackage>((resolve) => { resolvePreparation = resolve; }))
+    };
+    render(<JobReviewView applicationClient={applicationClient} client={makeClient()} />);
+
+    await user.click(screen.getByRole("button", { name: "Search jobs" }));
+    await user.click(await screen.findByRole("button", { name: "Inspect job" }));
+    await user.type(screen.getByLabelText("Candidate ID"), "candidate-1");
+    await user.click(screen.getByRole("button", { name: "Prepare application for review" }));
+
+    expect(screen.getByRole("button", { name: "Prepare application for review" })).toBeDisabled();
+    expect(applicationClient.callTool).toHaveBeenCalledTimes(1);
+    resolvePreparation(preparedPackage);
   });
 });

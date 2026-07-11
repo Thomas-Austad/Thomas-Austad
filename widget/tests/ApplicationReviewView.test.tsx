@@ -4,9 +4,10 @@ import { describe, expect, it, vi } from "vitest";
 
 import { ApplicationReviewView } from "../src/components/ApplicationReviewView";
 import type { ApplicationToolClient } from "../src/applicationClient";
+import type { ApplicationPackage } from "../src/contracts";
 
 const question = "Are you authorized to work in the United States?";
-const preparedPackage = {
+const preparedPackage: ApplicationPackage = {
   application_id: "application-123",
   candidate_id: "candidate-1",
   job_id: "job-1",
@@ -23,7 +24,7 @@ const preparedPackage = {
   status: "prepared"
 };
 
-const resolvedPackage = {
+const resolvedPackage: ApplicationPackage = {
   ...preparedPackage,
   requires_user_input: [],
   unresolved_screening_questions: [],
@@ -49,6 +50,15 @@ function makeClient(): ApplicationToolClient {
 }
 
 describe("ApplicationReviewView", () => {
+  it("uses a newly prepared package immediately without another tool call", async () => {
+    const client: ApplicationToolClient = { callTool: vi.fn() };
+    render(<ApplicationReviewView client={client} preparedPackage={preparedPackage} />);
+
+    expect(await screen.findByText("Tailored resume")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Package status: prepared" })).toBeInTheDocument();
+    expect(client.callTool).not.toHaveBeenCalled();
+  });
+
   it("requires direct confirmations for a sensitive answer and local approval without offering submission", async () => {
     const user = userEvent.setup();
     const client = makeClient();

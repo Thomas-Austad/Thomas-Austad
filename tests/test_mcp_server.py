@@ -2,7 +2,7 @@ import pytest
 
 from app import store
 from app import mcp_server
-from app.models.schemas import ProfileCorrectionRequest, ScreeningQuestionReview
+from app.models.schemas import ConfirmedScreeningAnswer, ProfileCorrectionRequest, ScreeningQuestionReview
 from app.services.audit_service import read_audit_events
 
 
@@ -112,3 +112,22 @@ async def test_application_mcp_resolution_then_approval_records_audit(sample_app
         "12345678-1234-4234-9234-123456789013",
     ]
     assert "Yes" not in audit_path.read_text(encoding="utf-8")
+
+
+async def test_prepared_application_tool_returns_json_compatible_dates(sample_application, monkeypatch) -> None:
+    sample_application.confirmed_screening_answers = [
+        ConfirmedScreeningAnswer(
+            question="Synthetic question",
+            category="work_authorization",
+            request_id="request-123",
+        )
+    ]
+
+    async def fake_prepare(_request):
+        return sample_application
+
+    monkeypatch.setattr(mcp_server, "prepare_application", fake_prepare)
+
+    package = await mcp_server.prepare_job_application("candidate-1", "job-1")
+
+    assert isinstance(package["confirmed_screening_answers"][0]["confirmed_at"], str)

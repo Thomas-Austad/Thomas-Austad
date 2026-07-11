@@ -193,6 +193,12 @@ ul {
   color: #ffffff;
 }
 
+.prepare-button {
+  background: #245bdb;
+  border-color: #245bdb;
+  color: #ffffff;
+}
+
 .approved-notice {
   border-left: 0.25rem solid #287a3c;
   padding-left: 0.75rem;

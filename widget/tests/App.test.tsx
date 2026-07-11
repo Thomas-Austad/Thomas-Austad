@@ -3,6 +3,8 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import { App } from "../src/App";
+import type { ApplicationToolClient } from "../src/applicationClient";
+import type { JobToolClient } from "../src/jobClient";
 import type { ProfileToolClient } from "../src/profileClient";
 
 const profileReview = {
@@ -34,6 +36,40 @@ const profileReview = {
 function makeProfileClient(): ProfileToolClient {
   return { callTool: vi.fn().mockResolvedValue(profileReview) };
 }
+
+const appJobSearchResult = {
+  count: 1,
+  jobs: [{
+    job_id: "greenhouse:example:1",
+    source: "greenhouse",
+    source_url: "https://example.com/jobs/1",
+    company: "Example Co",
+    title: "Senior Backend Engineer",
+    location: "Remote US",
+    remote_type: "remote",
+    description: "Build reliable APIs.",
+    salary_min: 150000,
+    salary_max: 190000,
+    currency: "USD",
+    employment_type: null,
+    posted_at: null,
+    active: true
+  }],
+  provider_errors: []
+};
+
+const preparedPackage = {
+  application_id: "application-123",
+  candidate_id: "candidate-1",
+  job_id: "greenhouse:example:1",
+  tailored_resume_markdown: "# Avery Example",
+  cover_letter: "Cover letter",
+  factual_warnings: [],
+  requires_user_input: [],
+  unresolved_screening_questions: [],
+  confirmed_screening_answers: [],
+  status: "prepared"
+} as const;
 
 describe("App", () => {
   it("supports keyboard-reachable section navigation", async () => {
@@ -80,5 +116,26 @@ describe("App", () => {
       corrections: { headline: "Principal software engineer" },
       confirmed_by_user: true
     });
+  });
+
+  it("opens a newly prepared package in application review without an approval or submission action", async () => {
+    const user = userEvent.setup();
+    const jobClient: JobToolClient = { callTool: vi.fn().mockResolvedValue(appJobSearchResult) };
+    const applicationClient: ApplicationToolClient = { callTool: vi.fn().mockResolvedValue(preparedPackage) };
+    render(<App applicationClient={applicationClient} jobClient={jobClient} />);
+
+    await user.click(screen.getByRole("tab", { name: "Jobs" }));
+    await user.click(screen.getByRole("button", { name: "Search jobs" }));
+    await user.click(await screen.findByRole("button", { name: "Inspect job" }));
+    await user.type(screen.getByLabelText("Candidate ID"), "candidate-1");
+    await user.click(screen.getByRole("button", { name: "Prepare application for review" }));
+
+    expect(await screen.findByText("Tailored resume")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Applications" })).toHaveAttribute("aria-selected", "true");
+    expect(applicationClient.callTool).toHaveBeenCalledWith("prepare_job_application", expect.objectContaining({
+      candidate_id: "candidate-1",
+      job_id: "greenhouse:example:1"
+    }));
+    expect(screen.queryByRole("button", { name: /^submit/i })).not.toBeInTheDocument();
   });
 });

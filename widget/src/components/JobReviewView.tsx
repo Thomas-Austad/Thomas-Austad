@@ -1,11 +1,15 @@
 import { FormEvent, useState } from "react";
 
 import type { CompensationEstimate, JobListing, JobMatch, JobSearchResult } from "../contracts";
+import type { ApplicationPackage } from "../contracts";
+import { prepareApplicationPackage, type ApplicationToolClient } from "../applicationClient";
 import { loadCompensation, loadJobMatch, searchJobs, type JobToolClient } from "../jobClient";
 import { StatusPanel } from "./StatusPanel";
 
 interface JobReviewViewProps {
+  applicationClient?: ApplicationToolClient;
   client?: JobToolClient;
+  onApplicationPrepared?: (applicationPackage: ApplicationPackage) => void;
 }
 
 function toList(value: string): string[] {
@@ -18,7 +22,7 @@ function formatMoney(value: number | null | undefined, currency: string): string
     : new Intl.NumberFormat("en-US", { style: "currency", currency, maximumFractionDigits: 0 }).format(value);
 }
 
-export function JobReviewView({ client }: JobReviewViewProps) {
+export function JobReviewView({ applicationClient, client, onApplicationPrepared }: JobReviewViewProps) {
   const [greenhouseBoards, setGreenhouseBoards] = useState("");
   const [leverCompanies, setLeverCompanies] = useState("");
   const [keywords, setKeywords] = useState("");
@@ -111,6 +115,25 @@ export function JobReviewView({ client }: JobReviewViewProps) {
     }
   };
 
+  const prepareApplication = async () => {
+    if (!applicationClient || !selectedJob || !candidateId.trim()) {
+      setStatus("error");
+      setDetail("Enter a candidate ID before preparing an application package.");
+      return;
+    }
+    setStatus("loading");
+    setDetail("Preparing an application package for your review. Nothing will be submitted.");
+    try {
+      const applicationPackage = await prepareApplicationPackage(applicationClient, candidateId, selectedJob.job_id);
+      setStatus("ready");
+      setDetail("");
+      onApplicationPrepared?.(applicationPackage);
+    } catch {
+      setStatus("error");
+      setDetail("The application package could not be prepared. Your selected job remains available.");
+    }
+  };
+
   return (
     <section aria-labelledby="job-view-title" className="job-view">
       <h2 id="job-view-title">Jobs and fit review</h2>
@@ -155,6 +178,8 @@ export function JobReviewView({ client }: JobReviewViewProps) {
           onCompensation={reviewCompensation}
           onGeographyChange={setGeography}
           onMatch={() => void reviewMatch()}
+          onPrepareApplication={() => void prepareApplication()}
+          preparationPending={status === "loading"}
           onRoleFamilyChange={setRoleFamily}
           roleFamily={roleFamily}
         />
@@ -173,7 +198,9 @@ interface JobDetailsProps {
   onCompensation: (event: FormEvent<HTMLFormElement>) => void;
   onGeographyChange: (value: string) => void;
   onMatch: () => void;
+  onPrepareApplication: () => void;
   onRoleFamilyChange: (value: string) => void;
+  preparationPending: boolean;
   roleFamily: string;
 }
 
@@ -197,6 +224,15 @@ function JobDetails(props: JobDetailsProps) {
         <label htmlFor="job-candidate-id">Candidate ID</label>
         <input id="job-candidate-id" maxLength={128} onChange={(event) => props.onCandidateIdChange(event.target.value)} value={props.candidateId} />
         <button className="primary" onClick={props.onMatch} type="button">Review match</button>
+        <button
+          className="prepare-button"
+          disabled={props.preparationPending || props.candidateId.trim().length === 0}
+          onClick={props.onPrepareApplication}
+          type="button"
+        >
+          Prepare application for review
+        </button>
+        <p>Preparation creates a local draft for review. It does not approve or submit an application.</p>
         {props.match ? <MatchDetails match={props.match} /> : null}
       </section>
       <form aria-labelledby="compensation-title" className="compensation-form" onSubmit={props.onCompensation}>

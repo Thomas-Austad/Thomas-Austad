@@ -114,7 +114,7 @@ async def estimate_market_compensation(candidate_id: str, role_family: str, geog
 async def prepare_job_application(candidate_id: str, job_id: str, screening_questions: list[str] | None = None):
     """Prepare a truthful tailored resume, cover letter, and screening answers for user review."""
     return (await prepare_application(ApplicationRequest(candidate_id=candidate_id, job_id=job_id,
-                                                         screening_questions=screening_questions or []))).model_dump()
+                                                         screening_questions=screening_questions or []))).model_dump(mode="json")
 
 
 IdempotencyKey = Annotated[str, Field(min_length=16, max_length=128)]
