@@ -5,14 +5,19 @@ from pathlib import Path
 from mcp.server.fastmcp import FastMCP
 from app.main import (
     apply_profile_corrections,
+    approve_prepared_application,
     create_profile,
     estimate_compensation,
+    get_application_package,
     get_profile_review,
     prepare_application,
+    resolve_application_screening_question,
     score_match,
     search_jobs,
 )
-from app.main import ProfileRequest, JobSearchRequest, ApplicationRequest
+from app.main import ApplicationRequest, JobSearchRequest, ProfileRequest, ScreeningQuestionText, ShortText
+from pydantic import Field
+from typing import Annotated
 from app.models.schemas import ProfileCorrectionRequest
 
 mcp = FastMCP("Talent Advisor")
@@ -110,6 +115,49 @@ async def prepare_job_application(candidate_id: str, job_id: str, screening_ques
     """Prepare a truthful tailored resume, cover letter, and screening answers for user review."""
     return (await prepare_application(ApplicationRequest(candidate_id=candidate_id, job_id=job_id,
                                                          screening_questions=screening_questions or []))).model_dump()
+
+
+IdempotencyKey = Annotated[str, Field(min_length=16, max_length=128)]
+ScreeningAnswer = Annotated[str, Field(min_length=1, max_length=5_000)]
+
+
+@mcp.tool(meta=WIDGET_TEMPLATE_META)
+async def get_application_review(application_id: ShortText):
+    """Read one local application package for review. This tool has no external effect."""
+    return get_application_package(application_id).model_dump(mode="json")
+
+
+@mcp.tool(meta=WIDGET_TEMPLATE_META)
+async def resolve_application_screening_answer(
+    application_id: ShortText,
+    question: ScreeningQuestionText,
+    answer: ScreeningAnswer,
+    confirmed_by_user: bool,
+    idempotency_key: IdempotencyKey,
+):
+    """Save one directly confirmed screening answer; it never submits an application."""
+    if not confirmed_by_user:
+        raise ValueError("Sensitive screening answers require direct user confirmation")
+    return resolve_application_screening_question(
+        application_id,
+        question,
+        answer,
+        confirmed_by_user,
+        idempotency_key,
+        "local_user",
+    ).model_dump(mode="json")
+
+
+@mcp.tool(meta=WIDGET_TEMPLATE_META)
+async def approve_prepared_application_review(
+    application_id: ShortText,
+    confirmed_by_user: bool,
+    idempotency_key: IdempotencyKey,
+):
+    """Approve a fully resolved local package after direct confirmation; it never submits it."""
+    if not confirmed_by_user:
+        raise ValueError("Application approval requires direct user confirmation")
+    return approve_prepared_application(application_id, idempotency_key, "local_user").model_dump(mode="json")
 
 
 if __name__ == "__main__":

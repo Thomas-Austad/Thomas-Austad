@@ -74,6 +74,84 @@ class ProfileDataActionRequest(BaseModel):
     confirmed_by_user: bool = False
 
 
+def get_application_package(application_id: str):
+    package = store.applications.get(application_id)
+    if not package:
+        raise HTTPException(404, "Application not found")
+    return package
+
+
+def approve_prepared_application(
+    application_id: str,
+    request_id: str,
+    actor_id: str,
+):
+    package = get_application_package(application_id)
+    if package.requires_user_input or package.unresolved_screening_questions:
+        raise HTTPException(409, "Resolve required user inputs before approval")
+    if package.status != "prepared":
+        raise HTTPException(409, "Only prepared applications can be approved")
+    approved_package = package.model_copy(update={"status": "approved"})
+    store.applications[application_id] = approved_package
+    try:
+        record_approval_audit_event(application_id, "approved", request_id, actor_id)
+    except OSError as exc:
+        store.applications[application_id] = package
+        raise HTTPException(503, "Unable to record required audit receipt") from exc
+    return approved_package
+
+
+def resolve_application_screening_question(
+    application_id: str,
+    question: str,
+    answer: str,
+    confirmed_by_user: bool,
+    request_id: str,
+    actor_id: str,
+):
+    package = get_application_package(application_id)
+    if package.status != "prepared":
+        raise HTTPException(409, "Screening questions can only be resolved before approval")
+    if not confirmed_by_user:
+        raise HTTPException(400, "Sensitive screening answers require direct user confirmation")
+
+    review = next(
+        (
+            unresolved
+            for unresolved in package.unresolved_screening_questions
+            if unresolved.question == question
+        ),
+        None,
+    )
+    if review is None:
+        raise HTTPException(404, "Unresolved screening question not found")
+
+    updated_package = package.model_copy(deep=True)
+    updated_package.screening_answers[question] = answer
+    updated_package.unresolved_screening_questions = [
+        unresolved
+        for unresolved in updated_package.unresolved_screening_questions
+        if unresolved.question != question
+    ]
+    updated_package.requires_user_input = [
+        required for required in updated_package.requires_user_input if required != question
+    ]
+    updated_package.confirmed_screening_answers.append(
+        ConfirmedScreeningAnswer(
+            question=question,
+            category=review.category,
+            request_id=request_id,
+        )
+    )
+    store.applications[application_id] = updated_package
+    try:
+        record_screening_confirmation_audit_event(application_id, "confirmed", request_id, actor_id)
+    except OSError as exc:
+        store.applications[application_id] = package
+        raise HTTPException(503, "Unable to record required audit receipt") from exc
+    return updated_package
+
+
 @app.middleware("http")
 async def enforce_rate_limits(request: Request, call_next):
     if settings.api_rate_limit_enabled:
@@ -366,27 +444,8 @@ async def prepare_application(req: ApplicationRequest):
 
 @app.post("/applications/{application_id}/approve")
 def approve_application(application_id: str, request: Request):
-    package = store.applications.get(application_id)
-    if not package:
-        raise HTTPException(404, "Application not found")
-    if package.requires_user_input or package.unresolved_screening_questions:
-        raise HTTPException(409, "Resolve required user inputs before approval")
-    if package.status != "prepared":
-        raise HTTPException(409, "Only prepared applications can be approved")
     request_id = request.headers.get("x-request-id", str(uuid.uuid4()))
-    approved_package = package.model_copy(update={"status": "approved"})
-    store.applications[application_id] = approved_package
-    try:
-        record_approval_audit_event(
-            application_id,
-            "approved",
-            request_id,
-            request.state.actor_id,
-        )
-    except OSError as exc:
-        store.applications[application_id] = package
-        raise HTTPException(503, "Unable to record required audit receipt") from exc
-    return approved_package
+    return approve_prepared_application(application_id, request_id, request.state.actor_id)
 
 
 @app.post("/applications/{application_id}/screening-questions/resolve")
@@ -395,55 +454,15 @@ def resolve_screening_question(
     req: ScreeningQuestionResolutionRequest,
     request: Request,
 ):
-    package = store.applications.get(application_id)
-    if not package:
-        raise HTTPException(404, "Application not found")
-    if package.status != "prepared":
-        raise HTTPException(409, "Screening questions can only be resolved before approval")
-    if not req.confirmed_by_user:
-        raise HTTPException(400, "Sensitive screening answers require direct user confirmation")
-
-    review = next(
-        (
-            unresolved
-            for unresolved in package.unresolved_screening_questions
-            if unresolved.question == req.question
-        ),
-        None,
-    )
-    if review is None:
-        raise HTTPException(404, "Unresolved screening question not found")
-
-    updated_package = package.model_copy(deep=True)
-    updated_package.screening_answers[req.question] = req.answer
-    updated_package.unresolved_screening_questions = [
-        unresolved
-        for unresolved in updated_package.unresolved_screening_questions
-        if unresolved.question != req.question
-    ]
-    updated_package.requires_user_input = [
-        required for required in updated_package.requires_user_input if required != req.question
-    ]
     request_id = request.headers.get("x-request-id", str(uuid.uuid4()))
-    updated_package.confirmed_screening_answers.append(
-        ConfirmedScreeningAnswer(
-            question=req.question,
-            category=review.category,
-            request_id=request_id,
-        )
+    return resolve_application_screening_question(
+        application_id,
+        req.question,
+        req.answer,
+        req.confirmed_by_user,
+        request_id,
+        request.state.actor_id,
     )
-    store.applications[application_id] = updated_package
-    try:
-        record_screening_confirmation_audit_event(
-            application_id,
-            "confirmed",
-            request_id,
-            request.state.actor_id,
-        )
-    except OSError as exc:
-        store.applications[application_id] = package
-        raise HTTPException(503, "Unable to record required audit receipt") from exc
-    return updated_package
 
 
 @app.get("/applications/{application_id}/resume.docx")

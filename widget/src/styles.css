@@ -81,13 +81,16 @@ h1 {
 
 .profile-view,
 .job-view,
+.application-view,
 .candidate-form,
 .correction-form,
 .profile-details,
 .job-details,
+.application-details,
 .search-form,
 .compensation-form,
-.review-actions {
+.review-actions,
+.application-load-form {
   display: grid;
   gap: 0.75rem;
 }
@@ -96,7 +99,9 @@ h1 {
 .correction-form,
 .search-form,
 .compensation-form,
-.review-actions {
+.review-actions,
+.application-load-form,
+.approval-panel {
   border: 1px solid #d6dce5;
   border-radius: 0.5rem;
   padding: 1rem;
@@ -160,6 +165,37 @@ ul {
 
 .job-description {
   white-space: pre-wrap;
+}
+
+.document-preview {
+  background: #ffffff;
+  border: 1px solid #d6dce5;
+  margin: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  padding: 0.75rem;
+  white-space: pre-wrap;
+}
+
+.screening-list {
+  display: grid;
+  gap: 1rem;
+}
+
+.screening-list li {
+  border: 1px solid #d6dce5;
+  padding: 0.75rem;
+}
+
+.approval-button {
+  background: #7d1d1d;
+  border-color: #7d1d1d;
+  color: #ffffff;
+}
+
+.approved-notice {
+  border-left: 0.25rem solid #287a3c;
+  padding-left: 0.75rem;
 }
 
 .dialog-backdrop {

@@ -2,6 +2,7 @@ import { createRoot, type Root } from "react-dom/client";
 
 import { App } from "./App";
 import { AppsBridge } from "./bridge";
+import type { ApplicationToolClient } from "./applicationClient";
 import type { JobToolClient } from "./jobClient";
 import type { ProfileToolClient } from "./profileClient";
 import "./styles.css";
@@ -27,6 +28,7 @@ class TalentAdvisorWidget extends HTMLElement {
     this.#bridge.start();
     this.#root.render(
       <App
+        applicationClient={this.#bridge as ApplicationToolClient}
         jobClient={this.#bridge as JobToolClient}
         profileClient={this.#bridge as ProfileToolClient}
       />

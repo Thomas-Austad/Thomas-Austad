@@ -9,7 +9,10 @@ export const allowedToolNameSchema = z.enum([
   "find_jobs",
   "evaluate_job_match",
   "estimate_market_compensation",
-  "prepare_job_application"
+  "prepare_job_application",
+  "get_application_review",
+  "resolve_application_screening_answer",
+  "approve_prepared_application_review"
 ]);
 export type AllowedToolName = z.infer<typeof allowedToolNameSchema>;
 
@@ -165,3 +168,52 @@ export const jobSearchInputSchema = z.object({
   title_keywords: z.array(z.string().trim().min(1).max(256)).max(20)
 });
 export type JobSearchInput = z.infer<typeof jobSearchInputSchema>;
+
+export const applicationPackageSchema = z.object({
+  application_id: z.string().min(1),
+  candidate_id: z.string().min(1),
+  job_id: z.string().min(1),
+  tailored_resume_markdown: z.string(),
+  cover_letter: z.string(),
+  factual_warnings: z.array(z.string()),
+  requires_user_input: z.array(z.string()),
+  unresolved_screening_questions: z.array(
+    z.object({
+      question: z.string().min(1),
+      category: z.enum([
+        "personal",
+        "legal",
+        "demographic",
+        "disability",
+        "criminal_history",
+        "salary_history",
+        "work_authorization"
+      ]),
+      reason: z.string()
+    })
+  ),
+  confirmed_screening_answers: z.array(
+    z.object({
+      question: z.string().min(1),
+      category: z.string().min(1),
+      confirmed_at: z.string().min(1)
+    })
+  ),
+  status: z.enum(["prepared", "approved", "submitted", "failed"])
+});
+export type ApplicationPackage = z.infer<typeof applicationPackageSchema>;
+
+export const applicationIdSchema = z.string().trim().min(1).max(128);
+export const screeningAnswerInputSchema = z.object({
+  application_id: applicationIdSchema,
+  question: z.string().trim().min(1).max(1_000),
+  answer: z.string().trim().min(1).max(5_000),
+  idempotency_key: z.string().uuid()
+});
+export type ScreeningAnswerInput = z.infer<typeof screeningAnswerInputSchema>;
+
+export const applicationApprovalInputSchema = z.object({
+  application_id: applicationIdSchema,
+  idempotency_key: z.string().uuid()
+});
+export type ApplicationApprovalInput = z.infer<typeof applicationApprovalInputSchema>;

@@ -1,7 +1,9 @@
 import pytest
 
+from app import store
 from app import mcp_server
-from app.models.schemas import ProfileCorrectionRequest
+from app.models.schemas import ProfileCorrectionRequest, ScreeningQuestionReview
+from app.services.audit_service import read_audit_events
 
 
 def test_widget_resource_requires_built_assets(tmp_path, monkeypatch) -> None:
@@ -38,6 +40,17 @@ def test_profile_correction_uses_the_widget_template() -> None:
     assert tool.meta == mcp_server.WIDGET_TEMPLATE_META
 
 
+def test_application_review_tools_use_the_widget_template() -> None:
+    for name in (
+        "get_application_review",
+        "resolve_application_screening_answer",
+        "approve_prepared_application_review",
+    ):
+        tool = mcp_server.mcp._tool_manager.get_tool(name)
+        assert tool is not None
+        assert tool.meta == mcp_server.WIDGET_TEMPLATE_META
+
+
 async def test_profile_correction_requires_direct_confirmation() -> None:
     with pytest.raises(ValueError, match="direct user confirmation"):
         await mcp_server.correct_candidate_profile(
@@ -45,3 +58,57 @@ async def test_profile_correction_requires_direct_confirmation() -> None:
             ProfileCorrectionRequest(headline="Corrected headline"),
             confirmed_by_user=False,
         )
+
+
+async def test_application_mcp_writes_require_direct_confirmation() -> None:
+    with pytest.raises(ValueError, match="Sensitive screening answers require direct user confirmation"):
+        await mcp_server.resolve_application_screening_answer(
+            "application-1",
+            "Are you authorized to work?",
+            "Yes",
+            confirmed_by_user=False,
+            idempotency_key="12345678-1234-4234-9234-123456789012",
+        )
+    with pytest.raises(ValueError, match="Application approval requires direct user confirmation"):
+        await mcp_server.approve_prepared_application_review(
+            "application-1",
+            confirmed_by_user=False,
+            idempotency_key="12345678-1234-4234-9234-123456789012",
+        )
+
+
+async def test_application_mcp_resolution_then_approval_records_audit(sample_application, tmp_path, monkeypatch) -> None:
+    audit_path = tmp_path / "audit.jsonl"
+    monkeypatch.setattr("app.config.settings.audit_log_path", str(audit_path))
+    question = "Are you authorized to work in the United States?"
+    sample_application.requires_user_input = [question]
+    sample_application.unresolved_screening_questions = [
+        ScreeningQuestionReview(
+            question=question,
+            category="work_authorization",
+            reason="This answer requires direct confirmation.",
+        )
+    ]
+    store.applications[sample_application.application_id] = sample_application
+
+    resolved = await mcp_server.resolve_application_screening_answer(
+        sample_application.application_id,
+        question,
+        "Yes",
+        confirmed_by_user=True,
+        idempotency_key="12345678-1234-4234-9234-123456789012",
+    )
+    approved = await mcp_server.approve_prepared_application_review(
+        sample_application.application_id,
+        confirmed_by_user=True,
+        idempotency_key="12345678-1234-4234-9234-123456789013",
+    )
+
+    assert resolved["unresolved_screening_questions"] == []
+    assert approved["status"] == "approved"
+    events = read_audit_events(audit_path)
+    assert [event.request_id for event in events] == [
+        "12345678-1234-4234-9234-123456789012",
+        "12345678-1234-4234-9234-123456789013",
+    ]
+    assert "Yes" not in audit_path.read_text(encoding="utf-8")
