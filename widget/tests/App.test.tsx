@@ -43,7 +43,7 @@ describe("App", () => {
     await user.click(screen.getByRole("tab", { name: "Jobs" }));
 
     expect(screen.getByRole("tab", { name: "Jobs" })).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByRole("tabpanel")).toHaveTextContent("Search and job-review views");
+    expect(screen.getByRole("tabpanel")).toHaveTextContent("Jobs and fit review");
   });
 
   it("shows a safe error without attempting a profile request when no secure client is available", async () => {

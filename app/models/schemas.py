@@ -144,6 +144,17 @@ class JobListing(BaseModel):
     raw: dict = {}
 
 
+class ProviderSearchError(BaseModel):
+    """Safe provider-level failure disclosure for a completed job search."""
+
+    provider: Literal["greenhouse", "lever"]
+
+
+class JobSearchResult(BaseModel):
+    jobs: list[JobListing]
+    provider_errors: list[ProviderSearchError] = []
+
+
 class ScoreDetail(BaseModel):
     score: float = Field(ge=0, le=100)
     reasons: list[str] = []

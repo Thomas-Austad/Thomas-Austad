@@ -1,7 +1,9 @@
 import { useState } from "react";
 
 import { ProfileReviewView } from "./components/ProfileReviewView";
+import { JobReviewView } from "./components/JobReviewView";
 import type { Route } from "./contracts";
+import type { JobToolClient } from "./jobClient";
 import type { ProfileToolClient } from "./profileClient";
 
 const navigation: Array<{ label: string; route: Route }> = [
@@ -17,10 +19,11 @@ const routeCopy: Record<Route, string> = {
 };
 
 interface AppProps {
+  jobClient?: JobToolClient;
   profileClient?: ProfileToolClient;
 }
 
-export function App({ profileClient }: AppProps) {
+export function App({ jobClient, profileClient }: AppProps) {
   const [route, setRoute] = useState<Route>("profile");
 
   return (
@@ -48,6 +51,8 @@ export function App({ profileClient }: AppProps) {
       <section aria-labelledby={`${route}-tab`} id={`${route}-panel`} role="tabpanel" tabIndex={-1}>
         {route === "profile" ? (
           <ProfileReviewView client={profileClient} />
+        ) : route === "jobs" ? (
+          <JobReviewView client={jobClient} />
         ) : (
           <>
             <h2>{navigation.find((item) => item.route === route)?.label}</h2>

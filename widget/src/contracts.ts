@@ -99,3 +99,69 @@ export const profileCorrectionInputSchema = z.object({
   value: z.string().trim().min(1).max(2_000)
 });
 export type ProfileCorrectionInput = z.infer<typeof profileCorrectionInputSchema>;
+
+const jobListingSchema = z.object({
+  job_id: z.string().min(1),
+  source: z.string().min(1),
+  source_url: z.string().url(),
+  company: z.string(),
+  title: z.string(),
+  location: z.string().nullable().optional(),
+  remote_type: z.string().nullable().optional(),
+  description: z.string(),
+  salary_min: z.number().nullable().optional(),
+  salary_max: z.number().nullable().optional(),
+  currency: z.string(),
+  employment_type: z.string().nullable().optional(),
+  posted_at: z.string().nullable().optional(),
+  active: z.boolean()
+});
+export type JobListing = z.infer<typeof jobListingSchema>;
+
+export const jobSearchResultSchema = z.object({
+  count: z.number().int().nonnegative(),
+  jobs: z.array(jobListingSchema),
+  provider_errors: z.array(z.object({ provider: z.enum(["greenhouse", "lever"]) })).default([])
+});
+export type JobSearchResult = z.infer<typeof jobSearchResultSchema>;
+
+const scoreDetailSchema = z.object({ score: z.number().min(0).max(100), reasons: z.array(z.string()) });
+
+export const jobMatchSchema = z.object({
+  candidate_id: z.string().min(1),
+  job_id: z.string().min(1),
+  qualification_fit: scoreDetailSchema,
+  evidence_strength: scoreDetailSchema,
+  seniority_alignment: scoreDetailSchema,
+  compensation_alignment: scoreDetailSchema,
+  preference_fit: scoreDetailSchema,
+  competitiveness: scoreDetailSchema,
+  overall_score: z.number().min(0).max(100),
+  hard_disqualifiers: z.array(z.string()),
+  gaps: z.array(z.string()),
+  recommendation: z.enum(["apply", "consider", "skip"])
+});
+export type JobMatch = z.infer<typeof jobMatchSchema>;
+
+export const compensationEstimateSchema = z.object({
+  role_family: z.string(),
+  geography: z.string(),
+  base_low: z.number().finite(),
+  base_mid: z.number().finite(),
+  base_high: z.number().finite(),
+  total_comp_low: z.number().finite().nullable().optional(),
+  total_comp_high: z.number().finite().nullable().optional(),
+  confidence: z.number().min(0).max(1),
+  rationale: z.array(z.string()),
+  as_of: z.string().min(1)
+});
+export type CompensationEstimate = z.infer<typeof compensationEstimateSchema>;
+
+const sourceListSchema = z.array(z.string().trim().min(1).max(256)).max(25);
+
+export const jobSearchInputSchema = z.object({
+  greenhouse_boards: sourceListSchema,
+  lever_companies: sourceListSchema,
+  title_keywords: z.array(z.string().trim().min(1).max(256)).max(20)
+});
+export type JobSearchInput = z.infer<typeof jobSearchInputSchema>;

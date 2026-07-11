@@ -40,9 +40,10 @@ async def test_job_service_deduplicates_by_source_url(sample_job):
     service.greenhouse = FakeConnector([sample_job])
     service.lever = FakeConnector([duplicate])
 
-    jobs = await service.search_known_boards(["example"], ["example"])
+    result = await service.search_known_boards(["example"], ["example"])
 
-    assert jobs == [sample_job]
+    assert result.jobs == [sample_job]
+    assert result.provider_errors == []
 
 
 async def test_job_service_continues_when_connector_fails(sample_job):
@@ -50,9 +51,10 @@ async def test_job_service_continues_when_connector_fails(sample_job):
     service.greenhouse = FakeConnector(error=RuntimeError("provider unavailable"))
     service.lever = FakeConnector([sample_job])
 
-    jobs = await service.search_known_boards(["broken"], ["example"])
+    result = await service.search_known_boards(["broken"], ["example"])
 
-    assert jobs == [sample_job]
+    assert result.jobs == [sample_job]
+    assert [error.provider for error in result.provider_errors] == ["greenhouse"]
 
 
 async def test_job_service_retries_read_only_connector_timeouts(sample_job, monkeypatch):
@@ -61,7 +63,7 @@ async def test_job_service_retries_read_only_connector_timeouts(sample_job, monk
     service.greenhouse = FlakyConnector([sample_job])
     service.lever = FakeConnector([])
 
-    jobs = await service.search_known_boards(["example"], [])
+    result = await service.search_known_boards(["example"], [])
 
-    assert jobs == [sample_job]
+    assert result.jobs == [sample_job]
     assert service.greenhouse.calls == 2

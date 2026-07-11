@@ -323,13 +323,14 @@ async def extract_resume(file: UploadFile = File(...)):
 
 @app.post("/jobs/search")
 async def search_jobs(req: JobSearchRequest):
-    found = await JobService().search_known_boards(req.greenhouse_boards, req.lever_companies)
+    result = await JobService().search_known_boards(req.greenhouse_boards, req.lever_companies)
+    found = result.jobs
     if req.title_keywords:
         terms = [t.lower() for t in req.title_keywords]
         found = [j for j in found if any(t in (j.title + " " + j.description).lower() for t in terms)]
     for job in found:
         store.jobs[job.job_id] = job
-    return {"count": len(found), "jobs": found}
+    return {"count": len(found), "jobs": found, "provider_errors": result.provider_errors}
 
 
 @app.post("/matches/{candidate_id}/{job_id}")

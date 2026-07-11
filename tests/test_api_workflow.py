@@ -5,7 +5,14 @@ import zipfile
 
 from app import store
 from app.main import app
-from app.models.schemas import Evidence, JobListing, ScreeningQuestionReview, Skill
+from app.models.schemas import (
+    Evidence,
+    JobListing,
+    JobSearchResult,
+    ProviderSearchError,
+    ScreeningQuestionReview,
+    Skill,
+)
 from app.services.audit_service import read_audit_events
 
 LOCAL_AUTH_HEADERS = {
@@ -164,7 +171,7 @@ def test_core_api_workflow_uses_stored_state(
     async def search_known_boards(self, greenhouse_boards, lever_companies):
         assert greenhouse_boards == ["example"]
         assert lever_companies == []
-        return [sample_job]
+        return JobSearchResult(jobs=[sample_job])
 
     async def match_run(self, profile, job):
         assert profile == sample_profile
@@ -449,7 +456,7 @@ def test_job_search_title_keywords_filter_results(monkeypatch, sample_job):
     )
 
     async def search_known_boards(self, greenhouse_boards, lever_companies):
-        return [sample_job, other_job]
+        return JobSearchResult(jobs=[sample_job, other_job])
 
     monkeypatch.setattr("app.main.JobService.search_known_boards", search_known_boards)
 
@@ -462,6 +469,23 @@ def test_job_search_title_keywords_filter_results(monkeypatch, sample_job):
     assert response.json()["count"] == 1
     assert response.json()["jobs"][0]["job_id"] == sample_job.job_id
     assert list(store.jobs) == [sample_job.job_id]
+
+
+def test_job_search_returns_safe_provider_errors_with_successful_jobs(monkeypatch, sample_job):
+    async def search_known_boards(self, greenhouse_boards, lever_companies):
+        return JobSearchResult(
+            jobs=[sample_job],
+            provider_errors=[ProviderSearchError(provider="lever")],
+        )
+
+    monkeypatch.setattr("app.main.JobService.search_known_boards", search_known_boards)
+
+    response = local_client().post("/jobs/search", json={"greenhouse_boards": ["example"]})
+
+    assert response.status_code == 200
+    assert response.json()["jobs"][0]["job_id"] == sample_job.job_id
+    assert response.json()["provider_errors"] == [{"provider": "lever"}]
+    assert "provider unavailable" not in response.text
 
 
 def test_model_backed_endpoint_rate_limit_returns_safe_error(monkeypatch, sample_profile):

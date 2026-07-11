@@ -80,15 +80,23 @@ h1 {
 }
 
 .profile-view,
+.job-view,
 .candidate-form,
 .correction-form,
-.profile-details {
+.profile-details,
+.job-details,
+.search-form,
+.compensation-form,
+.review-actions {
   display: grid;
   gap: 0.75rem;
 }
 
 .candidate-form,
-.correction-form {
+.correction-form,
+.search-form,
+.compensation-form,
+.review-actions {
   border: 1px solid #d6dce5;
   border-radius: 0.5rem;
   padding: 1rem;
@@ -127,6 +135,31 @@ dd {
 ul {
   margin: 0;
   padding-left: 1.25rem;
+}
+
+.job-results {
+  display: grid;
+  gap: 0.75rem;
+  list-style: none;
+  padding: 0;
+}
+
+.job-results li {
+  align-items: center;
+  border: 1px solid #d6dce5;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.75rem;
+}
+
+.provider-warning {
+  border-left: 0.25rem solid #736100;
+  padding: 0.75rem 1rem;
+}
+
+.job-description {
+  white-space: pre-wrap;
 }
 
 .dialog-backdrop {

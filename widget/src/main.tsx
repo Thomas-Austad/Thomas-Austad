@@ -2,6 +2,7 @@ import { createRoot, type Root } from "react-dom/client";
 
 import { App } from "./App";
 import { AppsBridge } from "./bridge";
+import type { JobToolClient } from "./jobClient";
 import type { ProfileToolClient } from "./profileClient";
 import "./styles.css";
 
@@ -24,7 +25,12 @@ class TalentAdvisorWidget extends HTMLElement {
       hostWindow: window.parent
     });
     this.#bridge.start();
-    this.#root.render(<App profileClient={this.#bridge as ProfileToolClient} />);
+    this.#root.render(
+      <App
+        jobClient={this.#bridge as JobToolClient}
+        profileClient={this.#bridge as ProfileToolClient}
+      />
+    );
   }
 
   disconnectedCallback(): void {
