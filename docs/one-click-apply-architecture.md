@@ -29,8 +29,7 @@ user action and never transfers credentials or submits on the user's behalf.
   and receipt are separate server-owned transitions.
 - Only a provider with documented write-API permission, a reviewed integration,
   and a valid user-granted authorization may receive a submission request.
-  Otherwise the product must offer the planned browser-handoff flow or no
-  action.
+  Otherwise the product must offer the browser-handoff flow or no action.
 - The service must not automate a browser, bypass access controls, replay
   cookies, scrape authenticated pages, solve challenges, or use undocumented
   endpoints.
@@ -110,9 +109,12 @@ attempt linked to the original idempotency key and provider status check.
    Provider payloads, sensitive answers, resumes, access tokens, and full
    prompts must not be logged or included in audit events.
 
-The browser-handoff alternative ends after step 3: a user-activated control can
-open the validated public employer URL, while all form completion and
-submission remain in the user's browser.
+The browser-handoff alternative ends after step 3. Issue #20 implements this
+non-submitting baseline: after local approval, the service validates a known
+provider HTTPS destination and records a handoff receipt only after direct user
+confirmation. It then returns a user-activated external link; all form
+completion and submission remain in the user's browser. The service never
+receives a provider response or claims a submission outcome for this path.
 
 ## Component boundaries
 
@@ -136,7 +138,7 @@ It must run the repository completion gate: `python -m ruff check .`,
 
 ## Delivery sequence
 
-1. Implement the browser-handoff workflow as the non-submitting baseline.
+1. **Complete (#20):** browser handoff is the non-submitting baseline.
 2. Select and approve one official provider and its terms/API constraints.
 3. Implement the server-side state, authorization, audit, idempotency, and
    reconciliation model with no provider write call enabled.

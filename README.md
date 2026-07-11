@@ -59,11 +59,20 @@ does not call the loopback API directly.
 7. `POST /applications/prepare`
 8. Resolve required user inputs
 9. `POST /applications/{application_id}/approve`
-10. Download `/applications/{application_id}/resume.docx`
+10. Optionally review `GET /applications/{application_id}/browser-handoff`, then
+    directly confirm `POST /applications/{application_id}/browser-handoff` to
+    receive a validated employer-page link
+11. Download `/applications/{application_id}/resume.docx`
 
 ## Important boundary
 
 This MVP prepares and tracks applications. Direct submission must be implemented only through approved ATS/job-board APIs or a user-controlled browser assistant. Never guess legally meaningful screening answers or submit without explicit approval.
+
+Browser handoff is not application submission. It is available only for a
+locally approved package and a known HTTPS Greenhouse, Lever, or Ashby employer
+page. After direct confirmation, the app returns a user-activated external link
+without uploading materials, transferring employer credentials, prefilling a
+form, or representing a submission outcome.
 
 API datetime fields are serialized as ISO 8601 timestamps with explicit UTC offsets.
 Sensitive screening questions are surfaced in `unresolved_screening_questions`, removed from generated screening answers, and block approval until resolved. Successful approvals and direct sensitive-screening confirmations write non-sensitive JSONL audit receipts to `AUDIT_LOG_PATH` (default `var/audit/events.jsonl`).

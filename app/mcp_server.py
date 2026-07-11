@@ -6,9 +6,11 @@ from mcp.server.fastmcp import FastMCP
 from app.main import (
     apply_profile_corrections,
     approve_prepared_application,
+    begin_browser_handoff as begin_browser_handoff_service,
     create_profile,
     estimate_compensation,
     get_application_package,
+    get_browser_handoff_preview as get_browser_handoff_preview_service,
     get_profile_review,
     prepare_application,
     resolve_application_screening_question,
@@ -141,12 +143,38 @@ async def prepare_job_application(candidate_id: str, job_id: str, screening_ques
 
 IdempotencyKey = Annotated[str, Field(min_length=16, max_length=128)]
 ScreeningAnswer = Annotated[str, Field(min_length=1, max_length=5_000)]
+BrowserHandoffDestination = Annotated[str, Field(min_length=1, max_length=2_000)]
 
 
 @mcp.tool(meta=WIDGET_TEMPLATE_META)
 async def get_application_review(application_id: ShortText):
     """Read one local application package for review. This tool has no external effect."""
     return get_application_package(application_id).model_dump(mode="json")
+
+
+@mcp.tool(meta=WIDGET_TEMPLATE_META)
+async def get_browser_handoff_preview(application_id: ShortText):
+    """Read a validated employer apply-page destination. This does not open a browser or submit anything."""
+    return get_browser_handoff_preview_service(application_id).model_dump(mode="json")
+
+
+@mcp.tool(meta=WIDGET_TEMPLATE_META)
+async def begin_browser_handoff(
+    application_id: ShortText,
+    expected_destination_url: BrowserHandoffDestination,
+    confirmed_by_user: bool,
+    idempotency_key: IdempotencyKey,
+):
+    """Prepare one confirmed employer-page handoff; it never uploads or submits an application."""
+    if not confirmed_by_user:
+        raise ValueError("Browser handoff requires direct user confirmation")
+    return begin_browser_handoff_service(
+        application_id,
+        expected_destination_url,
+        confirmed_by_user,
+        idempotency_key,
+        "local_user",
+    ).model_dump(mode="json")
 
 
 @mcp.tool(meta=WIDGET_TEMPLATE_META)

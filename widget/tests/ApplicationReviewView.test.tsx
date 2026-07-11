@@ -35,6 +35,8 @@ const resolvedPackage: ApplicationPackage = {
   }]
 };
 
+const approvedPackage: ApplicationPackage = { ...resolvedPackage, status: "approved" };
+
 function makeClient(): ApplicationToolClient {
   return {
     callTool: vi.fn().mockImplementation((name: string) => {
@@ -137,5 +139,58 @@ describe("ApplicationReviewView", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent("could not be approved");
     expect(screen.queryByText("Approved locally. Submission is unavailable in this widget.")).not.toBeInTheDocument();
+  });
+
+  it("renders a user-activated employer link only after a confirmed browser handoff", async () => {
+    const user = userEvent.setup();
+    const destination = "https://boards.greenhouse.io/example/jobs/1";
+    const client: ApplicationToolClient = {
+      callTool: vi.fn().mockImplementation((name: string) => {
+        if (name === "get_application_review") {
+          return Promise.resolve(approvedPackage);
+        }
+        if (name === "get_browser_handoff_preview") {
+          return Promise.resolve({
+            application_id: "application-123",
+            job_id: "job-1",
+            provider: "greenhouse",
+            company: "Example Co",
+            title: "Senior Backend Engineer",
+            destination_url: destination
+          });
+        }
+        return Promise.resolve({
+          application_id: "application-123",
+          job_id: "job-1",
+          provider: "greenhouse",
+          destination_url: destination,
+          status: "ready",
+          request_id: "12345678-1234-4234-9234-123456789012"
+        });
+      })
+    };
+    render(<ApplicationReviewView client={client} />);
+
+    await user.type(screen.getByLabelText("Application package ID"), "application-123");
+    await user.click(screen.getByRole("button", { name: "Load prepared package" }));
+    await user.click(await screen.findByRole("button", { name: "Prepare employer-page handoff" }));
+
+    expect(await screen.findByRole("dialog")).toHaveTextContent("Example Co");
+    expect(screen.getByRole("dialog")).toHaveTextContent("does not upload or submit");
+    expect(screen.queryByRole("link", { name: /open employer application/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^submit/i })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Confirm" }));
+
+    expect(client.callTool).toHaveBeenLastCalledWith("begin_browser_handoff", expect.objectContaining({
+      application_id: "application-123",
+      expected_destination_url: destination,
+      confirmed_by_user: true,
+      idempotency_key: expect.any(String)
+    }));
+    const link = await screen.findByRole("link", { name: "Open employer application (opens new tab)" });
+    expect(link).toHaveAttribute("href", destination);
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(link).toHaveAttribute("rel", "noopener noreferrer");
   });
 });

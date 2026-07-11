@@ -446,6 +446,119 @@ def test_duplicate_approval_is_rejected(sample_application, tmp_path, monkeypatc
     assert read_audit_events(tmp_path / "audit.jsonl")[0].result == "approved"
 
 
+def test_browser_handoff_requires_confirmation_validates_destination_and_is_idempotent(
+    sample_application,
+    sample_job,
+    tmp_path,
+    monkeypatch,
+):
+    audit_path = tmp_path / "audit.jsonl"
+    monkeypatch.setattr("app.config.settings.audit_log_path", str(audit_path))
+    job = sample_job.model_copy(
+        update={"source_url": "https://boards.greenhouse.io/example/jobs/1"}
+    )
+    package = sample_application.model_copy(update={"status": "approved"})
+    store.jobs[job.job_id] = job
+    store.applications[package.application_id] = package
+    client = local_client()
+
+    preview = client.get(f"/applications/{package.application_id}/browser-handoff")
+    rejected = client.post(
+        f"/applications/{package.application_id}/browser-handoff",
+        json={
+            "confirmed_by_user": False,
+            "expected_destination_url": str(job.source_url),
+            "idempotency_key": "12345678-1234-4234-9234-123456789012",
+        },
+    )
+    first = client.post(
+        f"/applications/{package.application_id}/browser-handoff",
+        json={
+            "confirmed_by_user": True,
+            "expected_destination_url": str(job.source_url),
+            "idempotency_key": "12345678-1234-4234-9234-123456789012",
+        },
+    )
+    replay = client.post(
+        f"/applications/{package.application_id}/browser-handoff",
+        json={
+            "confirmed_by_user": True,
+            "expected_destination_url": str(job.source_url),
+            "idempotency_key": "12345678-1234-4234-9234-123456789012",
+        },
+    )
+
+    assert preview.status_code == 200
+    assert preview.json()["destination_url"] == str(job.source_url)
+    assert rejected.status_code == 400
+    assert first.status_code == 200
+    assert replay.json() == first.json()
+    assert first.json()["status"] == "ready"
+    assert store.applications[package.application_id].status == "approved"
+    assert len(store.applications[package.application_id].browser_handoff_receipts) == 1
+    events = read_audit_events(audit_path)
+    assert [(event.action, event.result) for event in events] == [
+        ("application.browser_handoff", "ready")
+    ]
+    assert str(job.source_url) not in audit_path.read_text(encoding="utf-8")
+
+
+def test_browser_handoff_rejects_unapproved_or_untrusted_destinations(sample_application, sample_job):
+    client = local_client()
+    store.jobs[sample_job.job_id] = sample_job.model_copy(
+        update={"source_url": "https://boards.greenhouse.io.evil.example/apply"}
+    )
+    store.applications[sample_application.application_id] = sample_application
+
+    unapproved = client.get(f"/applications/{sample_application.application_id}/browser-handoff")
+    store.applications[sample_application.application_id] = sample_application.model_copy(
+        update={"status": "approved"}
+    )
+    untrusted = client.get(f"/applications/{sample_application.application_id}/browser-handoff")
+    valid_job = sample_job.model_copy(
+        update={"source_url": "https://boards.greenhouse.io/example/jobs/1"}
+    )
+    store.jobs[valid_job.job_id] = valid_job
+    changed_destination = client.post(
+        f"/applications/{sample_application.application_id}/browser-handoff",
+        json={
+            "confirmed_by_user": True,
+            "expected_destination_url": "https://boards.greenhouse.io/example/jobs/2",
+            "idempotency_key": "12345678-1234-4234-9234-123456789012",
+        },
+    )
+
+    assert unapproved.status_code == 409
+    assert untrusted.status_code == 409
+    assert changed_destination.status_code == 409
+    assert store.applications[sample_application.application_id].browser_handoff_receipts == []
+
+
+def test_browser_handoff_reverts_when_audit_receipt_cannot_be_written(sample_application, sample_job, monkeypatch):
+    job = sample_job.model_copy(
+        update={"source_url": "https://boards.greenhouse.io/example/jobs/1"}
+    )
+    package = sample_application.model_copy(update={"status": "approved"})
+    store.jobs[job.job_id] = job
+    store.applications[package.application_id] = package
+
+    def fail_to_record(*args, **kwargs) -> None:
+        raise OSError("disk unavailable")
+
+    monkeypatch.setattr("app.main.record_browser_handoff_audit_event", fail_to_record)
+    response = local_client().post(
+        f"/applications/{package.application_id}/browser-handoff",
+        json={
+            "confirmed_by_user": True,
+            "expected_destination_url": str(job.source_url),
+            "idempotency_key": "12345678-1234-4234-9234-123456789012",
+        },
+    )
+
+    assert response.status_code == 503
+    assert store.applications[package.application_id].browser_handoff_receipts == []
+
+
 def test_job_search_title_keywords_filter_results(monkeypatch, sample_job):
     async def search_known_boards(self, greenhouse_boards, lever_companies, ashby_job_boards, filters):
         assert filters.title_keywords == ["backend"]

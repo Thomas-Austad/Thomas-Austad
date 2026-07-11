@@ -1,18 +1,24 @@
 import {
   applicationApprovalInputSchema,
+  browserHandoffInputSchema,
+  browserHandoffPreviewSchema,
+  browserHandoffSchema,
   candidateIdSchema,
   applicationIdSchema,
   applicationPackageSchema,
   jobIdSchema,
   screeningAnswerInputSchema,
   type ApplicationApprovalInput,
+  type BrowserHandoff,
+  type BrowserHandoffInput,
+  type BrowserHandoffPreview,
   type ApplicationPackage,
   type ScreeningAnswerInput
 } from "./contracts";
 
 export interface ApplicationToolClient {
   callTool(
-    name: "prepare_job_application" | "get_application_review" | "resolve_application_screening_answer" | "approve_prepared_application_review",
+    name: "prepare_job_application" | "get_application_review" | "get_browser_handoff_preview" | "begin_browser_handoff" | "resolve_application_screening_answer" | "approve_prepared_application_review",
     args: Record<string, unknown>
   ): Promise<unknown>;
 }
@@ -37,6 +43,28 @@ export async function loadApplicationReview(
 ): Promise<ApplicationPackage> {
   return applicationPackageSchema.parse(
     await client.callTool("get_application_review", { application_id: applicationIdSchema.parse(applicationId) })
+  );
+}
+
+export async function loadBrowserHandoffPreview(
+  client: ApplicationToolClient,
+  applicationId: string
+): Promise<BrowserHandoffPreview> {
+  return browserHandoffPreviewSchema.parse(
+    await client.callTool("get_browser_handoff_preview", { application_id: applicationIdSchema.parse(applicationId) })
+  );
+}
+
+export async function beginBrowserHandoff(
+  client: ApplicationToolClient,
+  input: BrowserHandoffInput
+): Promise<BrowserHandoff> {
+  const validated = browserHandoffInputSchema.parse(input);
+  return browserHandoffSchema.parse(
+    await client.callTool("begin_browser_handoff", {
+      ...validated,
+      confirmed_by_user: true
+    })
   );
 }
 

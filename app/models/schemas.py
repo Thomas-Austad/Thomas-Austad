@@ -214,6 +214,33 @@ class ConfirmedScreeningAnswer(BaseModel):
     request_id: str
 
 
+BrowserHandoffProvider = Literal["ashby", "greenhouse", "lever"]
+
+
+class BrowserHandoffPreview(BaseModel):
+    application_id: str
+    job_id: str
+    provider: BrowserHandoffProvider
+    company: str
+    title: str
+    destination_url: HttpUrl
+
+
+class BrowserHandoffReceipt(BaseModel):
+    request_id: str
+    destination_url: HttpUrl
+    issued_at: datetime = Field(default_factory=utc_now)
+
+
+class BrowserHandoff(BaseModel):
+    application_id: str
+    job_id: str
+    provider: BrowserHandoffProvider
+    destination_url: HttpUrl
+    status: Literal["ready"] = "ready"
+    request_id: str
+
+
 class ApplicationPackage(BaseModel):
     application_id: str
     candidate_id: str
@@ -225,6 +252,7 @@ class ApplicationPackage(BaseModel):
     requires_user_input: list[str] = []
     unresolved_screening_questions: list[ScreeningQuestionReview] = []
     confirmed_screening_answers: list[ConfirmedScreeningAnswer] = []
+    browser_handoff_receipts: list[BrowserHandoffReceipt] = []
     status: Literal["prepared", "approved", "submitted", "failed"] = "prepared"
 
 

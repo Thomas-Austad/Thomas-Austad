@@ -5,6 +5,7 @@ import json
 import zipfile
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
+from urllib.parse import urlsplit
 
 from fastapi import FastAPI, File, HTTPException, Request, Response, UploadFile
 from fastapi.responses import JSONResponse
@@ -15,6 +16,10 @@ from app.agents.compensation_agent import CompensationAgent
 from app.agents.match_agent import MatchAgent
 from app.agents.application_agent import ApplicationAgent
 from app.models.schemas import (
+    BrowserHandoff,
+    BrowserHandoffPreview,
+    BrowserHandoffProvider,
+    BrowserHandoffReceipt,
     ConfirmedScreeningAnswer,
     JobSearchFilters,
     ProfileCorrectionRequest,
@@ -30,6 +35,7 @@ from app.services.document_service import (
 from app.services import local_auth_service
 from app.services.audit_service import (
     record_approval_audit_event,
+    record_browser_handoff_audit_event,
     record_profile_correction_audit_event,
     record_profile_data_action_audit_event,
     record_screening_confirmation_audit_event,
@@ -81,11 +87,109 @@ class ProfileDataActionRequest(BaseModel):
     confirmed_by_user: bool = False
 
 
+class BrowserHandoffRequest(BaseModel):
+    confirmed_by_user: bool = False
+    expected_destination_url: str = Field(min_length=1, max_length=2_000)
+    idempotency_key: str = Field(min_length=16, max_length=128)
+
+
+_BROWSER_HANDOFF_HOSTS: dict[BrowserHandoffProvider, set[str]] = {
+    "ashby": {"jobs.ashbyhq.com"},
+    "greenhouse": {"boards.greenhouse.io", "job-boards.greenhouse.io"},
+    "lever": {"jobs.lever.co"},
+}
+
+
 def get_application_package(application_id: str):
     package = store.applications.get(application_id)
     if not package:
         raise HTTPException(404, "Application not found")
     return package
+
+
+def _browser_handoff_preview(application_id: str) -> BrowserHandoffPreview:
+    package = get_application_package(application_id)
+    if package.status != "approved":
+        raise HTTPException(409, "Only locally approved applications can start browser handoff")
+    job = store.jobs.get(package.job_id)
+    if job is None:
+        raise HTTPException(409, "Browser handoff is unavailable for this application")
+    if job.source not in _BROWSER_HANDOFF_HOSTS:
+        raise HTTPException(409, "Browser handoff is unavailable for this application")
+
+    destination_url = str(job.source_url)
+    parsed = urlsplit(destination_url)
+    allowed_hosts = _BROWSER_HANDOFF_HOSTS[job.source]
+    if (
+        parsed.scheme != "https"
+        or parsed.hostname not in allowed_hosts
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.port not in (None, 443)
+    ):
+        raise HTTPException(409, "Browser handoff is unavailable for this application")
+
+    return BrowserHandoffPreview(
+        application_id=package.application_id,
+        job_id=job.job_id,
+        provider=job.source,
+        company=job.company,
+        title=job.title,
+        destination_url=destination_url,
+    )
+
+
+def get_browser_handoff_preview(application_id: str) -> BrowserHandoffPreview:
+    """Return the validated employer destination without opening or submitting anything."""
+    return _browser_handoff_preview(application_id)
+
+
+def begin_browser_handoff(
+    application_id: str,
+    expected_destination_url: str,
+    confirmed_by_user: bool,
+    request_id: str,
+    actor_id: str,
+) -> BrowserHandoff:
+    if not confirmed_by_user:
+        raise HTTPException(400, "Browser handoff requires direct user confirmation")
+    preview = _browser_handoff_preview(application_id)
+    if expected_destination_url != str(preview.destination_url):
+        raise HTTPException(409, "Browser handoff destination changed; review it again")
+
+    package = get_application_package(application_id)
+    existing = next(
+        (receipt for receipt in package.browser_handoff_receipts if receipt.request_id == request_id),
+        None,
+    )
+    if existing is not None:
+        if str(existing.destination_url) != str(preview.destination_url):
+            raise HTTPException(409, "Browser handoff request cannot be reused for a different destination")
+        return BrowserHandoff(
+            application_id=package.application_id,
+            job_id=package.job_id,
+            provider=preview.provider,
+            destination_url=existing.destination_url,
+            request_id=request_id,
+        )
+
+    updated_package = package.model_copy(deep=True)
+    updated_package.browser_handoff_receipts.append(
+        BrowserHandoffReceipt(request_id=request_id, destination_url=preview.destination_url)
+    )
+    store.applications[application_id] = updated_package
+    try:
+        record_browser_handoff_audit_event(application_id, "ready", request_id, actor_id)
+    except OSError as exc:
+        store.applications[application_id] = package
+        raise HTTPException(503, "Unable to record required audit receipt") from exc
+    return BrowserHandoff(
+        application_id=package.application_id,
+        job_id=package.job_id,
+        provider=preview.provider,
+        destination_url=preview.destination_url,
+        request_id=request_id,
+    )
 
 
 def approve_prepared_application(
@@ -454,6 +558,26 @@ async def prepare_application(req: ApplicationRequest):
 def approve_application(application_id: str, request: Request):
     request_id = request.headers.get("x-request-id", str(uuid.uuid4()))
     return approve_prepared_application(application_id, request_id, request.state.actor_id)
+
+
+@app.get("/applications/{application_id}/browser-handoff")
+def preview_browser_handoff(application_id: str):
+    return get_browser_handoff_preview(application_id)
+
+
+@app.post("/applications/{application_id}/browser-handoff")
+def create_browser_handoff(
+    application_id: str,
+    handoff: BrowserHandoffRequest,
+    request: Request,
+) -> BrowserHandoff:
+    return begin_browser_handoff(
+        application_id,
+        handoff.expected_destination_url,
+        handoff.confirmed_by_user,
+        handoff.idempotency_key,
+        request.state.actor_id,
+    )
 
 
 @app.post("/applications/{application_id}/screening-questions/resolve")

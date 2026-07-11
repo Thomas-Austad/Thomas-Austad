@@ -11,6 +11,8 @@ export const allowedToolNameSchema = z.enum([
   "estimate_market_compensation",
   "prepare_job_application",
   "get_application_review",
+  "get_browser_handoff_preview",
+  "begin_browser_handoff",
   "resolve_application_screening_answer",
   "approve_prepared_application_review"
 ]);
@@ -215,6 +217,26 @@ export const applicationPackageSchema = z.object({
 });
 export type ApplicationPackage = z.infer<typeof applicationPackageSchema>;
 
+export const browserHandoffPreviewSchema = z.object({
+  application_id: z.string().min(1),
+  job_id: z.string().min(1),
+  provider: z.enum(["ashby", "greenhouse", "lever"]),
+  company: z.string().min(1),
+  title: z.string().min(1),
+  destination_url: z.string().url()
+});
+export type BrowserHandoffPreview = z.infer<typeof browserHandoffPreviewSchema>;
+
+export const browserHandoffSchema = z.object({
+  application_id: z.string().min(1),
+  job_id: z.string().min(1),
+  provider: z.enum(["ashby", "greenhouse", "lever"]),
+  destination_url: z.string().url(),
+  status: z.literal("ready"),
+  request_id: z.string().uuid()
+});
+export type BrowserHandoff = z.infer<typeof browserHandoffSchema>;
+
 export const applicationIdSchema = z.string().trim().min(1).max(128);
 export const candidateIdSchema = z.string().trim().min(1).max(128);
 export const jobIdSchema = z.string().trim().min(1).max(2_000);
@@ -231,3 +253,10 @@ export const applicationApprovalInputSchema = z.object({
   idempotency_key: z.string().uuid()
 });
 export type ApplicationApprovalInput = z.infer<typeof applicationApprovalInputSchema>;
+
+export const browserHandoffInputSchema = z.object({
+  application_id: applicationIdSchema,
+  expected_destination_url: z.string().url(),
+  idempotency_key: z.string().uuid()
+});
+export type BrowserHandoffInput = z.infer<typeof browserHandoffInputSchema>;

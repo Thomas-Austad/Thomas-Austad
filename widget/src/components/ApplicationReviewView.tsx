@@ -1,8 +1,10 @@
 import { FormEvent, useEffect, useState } from "react";
 
-import type { ApplicationPackage } from "../contracts";
+import type { ApplicationPackage, BrowserHandoff, BrowserHandoffPreview } from "../contracts";
 import {
   approveApplication,
+  beginBrowserHandoff,
+  loadBrowserHandoffPreview,
   loadApplicationReview,
   resolveScreeningAnswer,
   type ApplicationToolClient
@@ -30,7 +32,9 @@ export function ApplicationReviewView({ client, preparedPackage }: ApplicationRe
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [pendingScreening, setPendingScreening] = useState<PendingScreeningAnswer>();
   const [approvalConfirmationOpen, setApprovalConfirmationOpen] = useState(false);
-  const [pendingAction, setPendingAction] = useState<"approve" | "load" | "resolve">();
+  const [handoffPreview, setHandoffPreview] = useState<BrowserHandoffPreview>();
+  const [browserHandoff, setBrowserHandoff] = useState<BrowserHandoff>();
+  const [pendingAction, setPendingAction] = useState<"approve" | "handoff" | "handoff_preview" | "load" | "resolve">();
   const [status, setStatus] = useState<"empty" | "error" | "loading" | "ready">("ready");
   const [detail, setDetail] = useState("");
 
@@ -41,6 +45,8 @@ export function ApplicationReviewView({ client, preparedPackage }: ApplicationRe
     setApplicationId(preparedPackage.application_id);
     setPackageReview(preparedPackage);
     setAnswers({});
+    setHandoffPreview(undefined);
+    setBrowserHandoff(undefined);
     setStatus("ready");
     setDetail("Prepared for your review. This has not been approved or submitted.");
   }, [preparedPackage]);
@@ -59,11 +65,58 @@ export function ApplicationReviewView({ client, preparedPackage }: ApplicationRe
       const loaded = await loadApplicationReview(client, applicationId);
       setPackageReview(loaded);
       setAnswers({});
+      setHandoffPreview(undefined);
+      setBrowserHandoff(undefined);
       setStatus("ready");
       setDetail("");
     } catch {
       setStatus("error");
       setDetail("The application package could not be loaded. No approval or answer was sent.");
+    } finally {
+      setPendingAction(undefined);
+    }
+  };
+
+  const startBrowserHandoff = async () => {
+    if (!client || !packageReview) {
+      return;
+    }
+    setPendingAction("handoff_preview");
+    setStatus("loading");
+    setDetail("Checking the employer application page before browser handoff.");
+    try {
+      const preview = await loadBrowserHandoffPreview(client, packageReview.application_id);
+      setHandoffPreview(preview);
+      setStatus("ready");
+      setDetail("");
+    } catch {
+      setStatus("error");
+      setDetail("Browser handoff is unavailable. No browser was opened and no application was submitted.");
+    } finally {
+      setPendingAction(undefined);
+    }
+  };
+
+  const confirmBrowserHandoff = async () => {
+    if (!client || !packageReview || !handoffPreview) {
+      return;
+    }
+    setHandoffPreview(undefined);
+    setPendingAction("handoff");
+    setStatus("loading");
+    setDetail("Preparing your confirmed browser handoff. No application is being submitted.");
+    try {
+      const handoff = await beginBrowserHandoff(client, {
+        application_id: packageReview.application_id,
+        expected_destination_url: handoffPreview.destination_url,
+        idempotency_key: newIdempotencyKey()
+      });
+      setBrowserHandoff(handoff);
+      setStatus("ready");
+      setDetail("Your employer-page link is ready. Opening it is your choice and does not submit an application.");
+    } catch {
+      setStatus("error");
+      setDetail("Browser handoff could not be prepared. No browser was opened and no application was submitted.");
     } finally {
       setPendingAction(undefined);
     }
@@ -149,8 +202,10 @@ export function ApplicationReviewView({ client, preparedPackage }: ApplicationRe
         <PackageDetails
           answers={answers}
           approvalBlocked={approvalBlocked}
+          browserHandoff={browserHandoff}
           onAnswerChange={(question, answer) => setAnswers((current) => ({ ...current, [question]: answer }))}
           onApprove={() => setApprovalConfirmationOpen(true)}
+          onStartBrowserHandoff={() => void startBrowserHandoff()}
           onReviewAnswer={(question) => setPendingScreening({ question, answer: answers[question] ?? "" })}
           packageReview={packageReview}
           pendingAction={pendingAction}
@@ -170,6 +225,13 @@ export function ApplicationReviewView({ client, preparedPackage }: ApplicationRe
         open={approvalConfirmationOpen}
         title="Confirm local package approval"
       />
+      <ConfirmationDialog
+        description={handoffPreview ? `Open ${handoffPreview.company}'s ${handoffPreview.title} application page at ${handoffPreview.destination_url}? This opens the employer site in a new tab. It does not upload or submit an application.` : ""}
+        onCancel={() => setHandoffPreview(undefined)}
+        onConfirm={() => void confirmBrowserHandoff()}
+        open={handoffPreview !== undefined}
+        title="Confirm browser handoff"
+      />
     </section>
   );
 }
@@ -177,18 +239,22 @@ export function ApplicationReviewView({ client, preparedPackage }: ApplicationRe
 interface PackageDetailsProps {
   answers: Record<string, string>;
   approvalBlocked: boolean;
+  browserHandoff?: BrowserHandoff;
   onAnswerChange: (question: string, answer: string) => void;
   onApprove: () => void;
+  onStartBrowserHandoff: () => void;
   onReviewAnswer: (question: string) => void;
   packageReview: ApplicationPackage;
-  pendingAction?: "approve" | "load" | "resolve";
+  pendingAction?: "approve" | "handoff" | "handoff_preview" | "load" | "resolve";
 }
 
 function PackageDetails({
   answers,
   approvalBlocked,
+  browserHandoff,
   onAnswerChange,
   onApprove,
+  onStartBrowserHandoff,
   onReviewAnswer,
   packageReview,
   pendingAction
@@ -254,6 +320,31 @@ function PackageDetails({
         >
           Approve locally (not submit)
         </button>
+        {isApproved ? (
+          <div>
+            <h3>Employer browser handoff</h3>
+            <p>Open the validated employer page yourself. This does not upload or submit your application.</p>
+            <button
+              disabled={pendingAction !== undefined}
+              onClick={onStartBrowserHandoff}
+              type="button"
+            >
+              Prepare employer-page handoff
+            </button>
+            {browserHandoff ? (
+              <p>
+                <a
+                  href={browserHandoff.destination_url}
+                  referrerPolicy="no-referrer"
+                  rel="noopener noreferrer"
+                  target="_blank"
+                >
+                  Open employer application (opens new tab)
+                </a>
+              </p>
+            ) : null}
+          </div>
+        ) : null}
       </section>
     </div>
   );

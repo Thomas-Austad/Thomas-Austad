@@ -43,6 +43,8 @@ def test_profile_correction_uses_the_widget_template() -> None:
 def test_application_review_tools_use_the_widget_template() -> None:
     for name in (
         "get_application_review",
+        "get_browser_handoff_preview",
+        "begin_browser_handoff",
         "resolve_application_screening_answer",
         "approve_prepared_application_review",
     ):
@@ -72,6 +74,13 @@ async def test_application_mcp_writes_require_direct_confirmation() -> None:
     with pytest.raises(ValueError, match="Application approval requires direct user confirmation"):
         await mcp_server.approve_prepared_application_review(
             "application-1",
+            confirmed_by_user=False,
+            idempotency_key="12345678-1234-4234-9234-123456789012",
+        )
+    with pytest.raises(ValueError, match="Browser handoff requires direct user confirmation"):
+        await mcp_server.begin_browser_handoff(
+            "application-1",
+            "https://boards.greenhouse.io/example/jobs/1",
             confirmed_by_user=False,
             idempotency_key="12345678-1234-4234-9234-123456789012",
         )
@@ -131,3 +140,26 @@ async def test_prepared_application_tool_returns_json_compatible_dates(sample_ap
     package = await mcp_server.prepare_job_application("candidate-1", "job-1")
 
     assert isinstance(package["confirmed_screening_answers"][0]["confirmed_at"], str)
+
+
+async def test_browser_handoff_mcp_tool_returns_a_validated_destination(sample_application, sample_job, tmp_path, monkeypatch) -> None:
+    audit_path = tmp_path / "audit.jsonl"
+    monkeypatch.setattr("app.config.settings.audit_log_path", str(audit_path))
+    job = sample_job.model_copy(
+        update={"source_url": "https://boards.greenhouse.io/example/jobs/1"}
+    )
+    package = sample_application.model_copy(update={"status": "approved"})
+    store.jobs[job.job_id] = job
+    store.applications[package.application_id] = package
+
+    preview = await mcp_server.get_browser_handoff_preview(package.application_id)
+    handoff = await mcp_server.begin_browser_handoff(
+        package.application_id,
+        preview["destination_url"],
+        confirmed_by_user=True,
+        idempotency_key="12345678-1234-4234-9234-123456789012",
+    )
+
+    assert preview["company"] == sample_job.company
+    assert handoff["destination_url"] == "https://boards.greenhouse.io/example/jobs/1"
+    assert handoff["status"] == "ready"

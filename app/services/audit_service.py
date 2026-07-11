@@ -67,6 +67,24 @@ def record_screening_confirmation_audit_event(
     )
 
 
+def record_browser_handoff_audit_event(
+    application_id: str,
+    result: str,
+    request_id: str,
+    actor_id: str = "local_user",
+) -> None:
+    JsonlAuditLog().record(
+        AuditEvent(
+            action="application.browser_handoff",
+            target_type="application",
+            target_id=application_id,
+            result=result,
+            request_id=request_id,
+            actor_id=actor_id,
+        )
+    )
+
+
 def record_profile_correction_audit_event(
     candidate_id: str,
     result: str,
