@@ -53,7 +53,7 @@ def _validate_profile_evidence(
         "user": _normalized_text(json.dumps(preferences, sort_keys=True, default=str)),
     }
     for skill in profile.skills:
-        _validate_claim_evidence(skill.evidence, source_text, claim=skill.name)
+        _validate_claim_evidence(skill.evidence, source_text)
     for experience in profile.experience:
         _validate_claim_evidence(experience.evidence, source_text)
 
@@ -63,17 +63,13 @@ def _validate_profile_evidence(
             raise ModelServiceMalformedOutput("The model service returned an unsupported candidate claim.")
 
 
-def _validate_claim_evidence(
-    evidence: list[Evidence], source_text: dict[str, str], *, claim: str | None = None
-) -> None:
+def _validate_claim_evidence(evidence: list[Evidence], source_text: dict[str, str]) -> None:
     if not evidence:
         raise ModelServiceMalformedOutput("The model service returned a claim without evidence.")
     for item in evidence:
         supplied_text = source_text.get(item.source)
         evidence_text = _normalized_text(item.text)
         if not supplied_text or not evidence_text or not _has_lexical_support(item.text, supplied_text):
-            raise ModelServiceMalformedOutput("The model service returned an unsupported candidate claim.")
-        if claim is not None and not _has_lexical_support(claim, supplied_text):
             raise ModelServiceMalformedOutput("The model service returned an unsupported candidate claim.")
 
 

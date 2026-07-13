@@ -179,6 +179,20 @@ async def test_profile_agent_accepts_source_grounded_paraphrased_evidence() -> N
     assert profile.skills[0].name == "Python"
 
 
+async def test_profile_agent_does_not_require_a_skill_label_to_be_verbatim_in_the_source() -> None:
+    profile = _profile(evidence_text="Built Python APIs for internal services.")
+    profile.skills[0].name = "Backend engineering"
+
+    result = await CandidateProfileAgent(ai=ReplyAI(profile)).run(
+        "qualification-candidate",
+        "Built Python APIs for internal services.",
+        "",
+        {},
+    )
+
+    assert result.skills[0].name == "Backend engineering"
+
+
 async def test_profile_agent_propagates_partial_provider_failure() -> None:
     with pytest.raises(ModelServiceMalformedOutput):
         await CandidateProfileAgent(ai=FailingAI()).run(
