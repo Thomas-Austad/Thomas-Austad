@@ -20,7 +20,7 @@ A personal-use, ChatGPT-native AI career platform MVP.
 
 ### Windows app launcher
 
-Double-click `scripts\\Start-TalentAdvisor.vbs`. On first use, the graphical
+Double-click `scripts\\Start-TalentAdvisor.cmd`. On first use, the graphical
 launcher confirms before installing private local application files, asks for
 an OpenAI API key, creates any missing private database settings, starts only
 loopback services, and opens the Career Workspace. It never submits an

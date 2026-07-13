@@ -7,7 +7,7 @@ that you choose to complete and submit yourself.
 
 ## Start Talent Advisor
 
-1. Double-click `scripts\Start-TalentAdvisor.vbs` in the Talent Advisor folder.
+1. Double-click `scripts\Start-TalentAdvisor.cmd` in the Talent Advisor folder.
 2. On the first run, choose **Yes** if you want the launcher to install its
    private local application files. The launcher never installs software
    without this confirmation.
@@ -69,6 +69,7 @@ normal startup.
 | Local storage cannot start | Confirm Docker Desktop is ready, then try again. No data is reset by a failed start. |
 | The startup link expired | Close the browser tab and open Talent Advisor again from the launcher. |
 | An OpenAI problem occurs while creating a profile or package | Confirm that your API key is active and has access to the configured model, then restart Talent Advisor. |
+| Talent Advisor cannot reach the profile service | Confirm that your computer can make outbound HTTPS connections to `api.openai.com` (port 443), then try again. |
 
 Do not remove Docker volumes, the `.env` file, the local database, or the
 `var/audit/` directory unless you intentionally want to permanently delete

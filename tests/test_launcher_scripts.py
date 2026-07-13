@@ -4,11 +4,14 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_windows_launcher_uses_hidden_local_startup_without_bypassing_execution_policy() -> None:
-    script = (ROOT / "scripts" / "Start-TalentAdvisor.vbs").read_text(encoding="utf-8")
+def test_windows_command_launcher_uses_hidden_local_startup_without_bypassing_execution_policy() -> None:
+    script = (ROOT / "scripts" / "Start-TalentAdvisor.cmd").read_text(encoding="utf-8")
 
+    assert "powershell.exe" in script
+    assert "Start-TalentAdvisor.ps1" in script
     assert "-WindowStyle Hidden" in script
     assert "ExecutionPolicy Bypass" not in script
+    assert "wscript" not in script.lower()
 
 
 def test_first_run_launcher_collects_key_without_printing_it() -> None:

@@ -40,3 +40,6 @@ network service.
   by a non-Talent-Advisor process is rejected with a recovery message.
 - All started services stay on the configured loopback address. The launcher
   does not create tunnels, change firewall rules, or silently install software.
+- The Windows entry point uses a maintained command launcher that invokes the
+  PowerShell workflow directly; it does not rely on the deprecated VBScript
+  host or relax PowerShell execution policy.
