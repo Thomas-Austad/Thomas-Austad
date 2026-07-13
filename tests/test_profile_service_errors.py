@@ -2,7 +2,7 @@ from fastapi.testclient import TestClient
 
 from app.agents.profile_agent import CandidateProfileAgent
 from app.main import app
-from app.services.model_service import ModelServiceMalformedOutput, ModelServiceUnavailable
+from app.services.model_service import ModelServiceMalformedOutput, ModelServiceRequestTooLarge, ModelServiceUnavailable
 
 
 LOCAL_AUTH_HEADERS = {"Authorization": "Bearer test-local-access-token-that-is-at-least-32-characters"}
@@ -42,3 +42,19 @@ def test_profile_malformed_model_output_returns_safe_recovery_message(monkeypatc
     assert response.json() == {
         "detail": "Model service returned an invalid response. No changes were saved; try again shortly."
     }
+
+
+def test_profile_request_exceeding_local_model_limit_returns_safe_error(monkeypatch) -> None:
+    async def too_large(*_args, **_kwargs):
+        raise ModelServiceRequestTooLarge("resume text must not reach the API response")
+
+    monkeypatch.setattr(CandidateProfileAgent, "__init__", lambda self: None)
+    monkeypatch.setattr(CandidateProfileAgent, "run", too_large)
+
+    response = TestClient(app, headers=LOCAL_AUTH_HEADERS).post(
+        "/profiles",
+        json={"candidate_id": "synthetic", "resume_text": "Synthetic Candidate"},
+    )
+
+    assert response.status_code == 413
+    assert response.json() == {"detail": "Model request exceeds the configured local limit."}

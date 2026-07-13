@@ -69,6 +69,16 @@ def test_model_output_limit_cannot_exceed_context_limit() -> None:
         Settings(model_max_output_tokens=8_193, model_context_limit=8_192, _env_file=None)
 
 
+def test_model_request_limit_must_fit_the_context_budget() -> None:
+    with pytest.raises(ValidationError, match="MODEL_MAX_REQUEST_BYTES"):
+        Settings(
+            model_max_request_bytes=16_385,
+            model_max_output_tokens=4_096,
+            model_context_limit=8_192,
+            _env_file=None,
+        )
+
+
 @pytest.mark.parametrize(
     "database_url",
     [

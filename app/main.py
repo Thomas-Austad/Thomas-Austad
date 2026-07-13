@@ -34,6 +34,7 @@ from app.services.model_service import (
     ModelServiceError,
     ModelServiceMalformedOutput,
     ModelServiceOverloaded,
+    ModelServiceRequestTooLarge,
     ModelServiceTimeout,
     ModelServiceUnavailable,
 )
@@ -69,6 +70,8 @@ browser_sessions = BrowserSessionStore(
 async def handle_model_service_error(_request: Request, exc: ModelServiceError) -> JSONResponse:
     if isinstance(exc, ModelServiceOverloaded):
         return JSONResponse(status_code=429, content={"detail": "Model service is temporarily busy. Try again shortly."})
+    if isinstance(exc, ModelServiceRequestTooLarge):
+        return JSONResponse(status_code=413, content={"detail": "Model request exceeds the configured local limit."})
     if isinstance(exc, ModelServiceConfigurationError):
         detail = "Model service configuration needs attention. Check the selected local provider settings."
     elif isinstance(exc, ModelServiceMalformedOutput):

@@ -21,7 +21,9 @@ class Settings(BaseSettings):
     model_connect_timeout_seconds: float = Field(default=5, gt=0, le=60)
     model_read_timeout_seconds: float = Field(default=60, gt=0, le=300)
     model_max_retries: int = Field(default=1, ge=0, le=3)
+    model_max_request_bytes: int = Field(default=16_384, gt=0, le=1_000_000)
     model_max_output_tokens: int = Field(default=4_096, ge=1, le=32_768)
+    model_max_response_bytes: int = Field(default=2_000_000, gt=0, le=10_000_000)
     model_context_limit: int = Field(default=8_192, ge=512, le=131_072)
     connector_timeout_seconds: float = 30
     connector_max_attempts: int = 2
@@ -97,8 +99,11 @@ class Settings(BaseSettings):
             raise ValueError("Production DATABASE_URL must be set explicitly")
         if self.model_provider == "ollama" and not self.local_model_name.strip():
             raise ValueError("LOCAL_MODEL_NAME is required when MODEL_PROVIDER=ollama")
-        if self.model_max_output_tokens > self.model_context_limit:
-            raise ValueError("MODEL_MAX_OUTPUT_TOKENS must not exceed MODEL_CONTEXT_LIMIT")
+        if self.model_max_output_tokens >= self.model_context_limit:
+            raise ValueError("MODEL_MAX_OUTPUT_TOKENS must be lower than MODEL_CONTEXT_LIMIT")
+        max_context_request_bytes = (self.model_context_limit - self.model_max_output_tokens) * 4
+        if self.model_max_request_bytes > max_context_request_bytes:
+            raise ValueError("MODEL_MAX_REQUEST_BYTES exceeds the configured model context budget")
         return self
 
 

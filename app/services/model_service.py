@@ -31,6 +31,10 @@ class ModelServiceMalformedOutput(ModelServiceError):
     """The configured model service returned output that failed schema validation."""
 
 
+class ModelServiceRequestTooLarge(ModelServiceError):
+    """The requested model operation exceeds its configured local bounds."""
+
+
 class ModelService(Protocol):
     """Internal contract for deterministic agent workflows using a model provider."""
 
@@ -46,5 +50,7 @@ def create_model_service() -> ModelService:
 
         return OpenAIService()
     if settings.model_provider == "ollama":
-        raise ModelServiceUnavailable("The configured local model provider is not available.")
+        from app.services.ollama_service import OllamaService
+
+        return OllamaService()
     raise ModelServiceConfigurationError("The configured model provider is not supported.")

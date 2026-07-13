@@ -1,6 +1,5 @@
-import pytest
-
-from app.services.model_service import ModelServiceUnavailable, create_model_service
+from app.services.model_service import create_model_service
+from app.services.ollama_service import OllamaService
 
 
 def test_factory_uses_explicitly_selected_openai_provider(monkeypatch) -> None:
@@ -16,8 +15,7 @@ def test_factory_uses_explicitly_selected_openai_provider(monkeypatch) -> None:
     assert create_model_service() is created
 
 
-def test_factory_never_falls_back_from_the_selected_local_provider(monkeypatch) -> None:
+def test_factory_uses_the_explicitly_selected_local_provider(monkeypatch) -> None:
     monkeypatch.setattr("app.config.settings.model_provider", "ollama")
 
-    with pytest.raises(ModelServiceUnavailable, match="configured local model provider"):
-        create_model_service()
+    assert isinstance(create_model_service(), OllamaService)
