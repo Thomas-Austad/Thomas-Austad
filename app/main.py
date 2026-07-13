@@ -12,6 +12,7 @@ from urllib.parse import urlsplit
 from fastapi import FastAPI, File, HTTPException, Request, Response, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from openai import APIConnectionError, APIStatusError, AuthenticationError, RateLimitError
 from pydantic import BaseModel, model_validator
 from pydantic import Field
 from app.agents.profile_agent import CandidateProfileAgent
@@ -456,7 +457,16 @@ app.mount("/app", StaticFiles(directory=BROWSER_UI_DIST_DIR, check_dir=False), n
 
 @app.post("/profiles")
 async def create_profile(req: ProfileRequest):
-    profile = await CandidateProfileAgent().run(req.candidate_id, req.resume_text, req.linkedin_text, req.preferences)
+    try:
+        profile = await CandidateProfileAgent().run(req.candidate_id, req.resume_text, req.linkedin_text, req.preferences)
+    except APIConnectionError as exc:
+        raise HTTPException(503, "Profile service cannot be reached. Check your internet connection and try again.") from exc
+    except AuthenticationError as exc:
+        raise HTTPException(503, "Profile service configuration needs attention. Update your local OpenAI settings and restart Talent Advisor.") from exc
+    except RateLimitError as exc:
+        raise HTTPException(429, "Profile service is temporarily busy. Wait a moment and try again.") from exc
+    except APIStatusError as exc:
+        raise HTTPException(502, "Profile service is temporarily unavailable. Try again shortly.") from exc
     store.profiles[profile.candidate_id] = profile
     return profile
 
