@@ -166,6 +166,19 @@ async def test_profile_agent_rejects_unsupported_model_claims() -> None:
         )
 
 
+async def test_profile_agent_accepts_source_grounded_paraphrased_evidence() -> None:
+    profile = await CandidateProfileAgent(
+        ai=ReplyAI(_profile(evidence_text="Built scalable Python APIs for internal services."))
+    ).run(
+        "qualification-candidate",
+        "Built Python APIs for internal services.",
+        "",
+        {},
+    )
+
+    assert profile.skills[0].name == "Python"
+
+
 async def test_profile_agent_propagates_partial_provider_failure() -> None:
     with pytest.raises(ModelServiceMalformedOutput):
         await CandidateProfileAgent(ai=FailingAI()).run(

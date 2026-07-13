@@ -1,4 +1,5 @@
 import json
+import re
 
 from app.models.schemas import CandidateProfile, Evidence
 from app.agents.prompt_safety import PROMPT_BOUNDARY_INSTRUCTIONS, trusted_json_block, untrusted_content_block
@@ -52,21 +53,36 @@ def _validate_profile_evidence(
         "user": _normalized_text(json.dumps(preferences, sort_keys=True, default=str)),
     }
     for skill in profile.skills:
-        _validate_claim_evidence(skill.evidence, source_text)
+        _validate_claim_evidence(skill.evidence, source_text, claim=skill.name)
     for experience in profile.experience:
         _validate_claim_evidence(experience.evidence, source_text)
 
     input_text = " ".join(source_text.values())
     for claim in [*profile.education, *profile.certifications]:
-        if not _normalized_text(claim) or _normalized_text(claim) not in input_text:
+        if not _has_lexical_support(claim, input_text):
             raise ModelServiceMalformedOutput("The model service returned an unsupported candidate claim.")
 
 
-def _validate_claim_evidence(evidence: list[Evidence], source_text: dict[str, str]) -> None:
+def _validate_claim_evidence(
+    evidence: list[Evidence], source_text: dict[str, str], *, claim: str | None = None
+) -> None:
     if not evidence:
         raise ModelServiceMalformedOutput("The model service returned a claim without evidence.")
     for item in evidence:
         supplied_text = source_text.get(item.source)
         evidence_text = _normalized_text(item.text)
-        if not supplied_text or not evidence_text or evidence_text not in supplied_text:
+        if not supplied_text or not evidence_text or not _has_lexical_support(item.text, supplied_text):
             raise ModelServiceMalformedOutput("The model service returned an unsupported candidate claim.")
+        if claim is not None and not _has_lexical_support(claim, supplied_text):
+            raise ModelServiceMalformedOutput("The model service returned an unsupported candidate claim.")
+
+
+def _has_lexical_support(claim: str, source_text: str) -> bool:
+    """Allow source-grounded paraphrases while rejecting unrelated model claims."""
+    claim_terms = _meaningful_terms(claim)
+    source_terms = _meaningful_terms(source_text)
+    return bool(claim_terms and source_terms and claim_terms & source_terms)
+
+
+def _meaningful_terms(value: str) -> set[str]:
+    return {term.rstrip("s") for term in re.findall(r"[a-z0-9+#.]{2,}", value.casefold())}
