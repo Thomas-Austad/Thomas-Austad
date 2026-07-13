@@ -14,6 +14,7 @@ def test_profile_connection_failure_returns_safe_recovery_message(monkeypatch) -
     async def unavailable(*_args, **_kwargs):
         raise APIConnectionError(message="connection failed", request=httpx.Request("POST", "https://api.openai.com/v1/responses"))
 
+    monkeypatch.setattr(CandidateProfileAgent, "__init__", lambda self: None)
     monkeypatch.setattr(CandidateProfileAgent, "run", unavailable)
 
     response = TestClient(app, headers=LOCAL_AUTH_HEADERS).post(
