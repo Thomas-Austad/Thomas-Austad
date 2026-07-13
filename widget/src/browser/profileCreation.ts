@@ -6,7 +6,7 @@ export function profileCreationFailureMessage(status: number): string {
     return "Profile creation is temporarily busy. Wait a moment and try again.";
   }
   if (status === 502 || status === 503) {
-    return "Talent Advisor cannot reach the profile service. Check your internet connection and try again.";
+    return "Talent Advisor cannot reach the local model service. Start Ollama and try again.";
   }
   return "Your profile could not be created. Your text is still here so you can try again.";
 }

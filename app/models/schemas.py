@@ -150,6 +150,13 @@ class ProviderSearchError(BaseModel):
     provider: Literal["ashby", "greenhouse", "lever"]
 
 
+class LocalModelReadiness(BaseModel):
+    """Safe local-runtime readiness state; never includes runtime payloads or settings."""
+
+    ready: bool
+    status: Literal["ready", "runtime_unavailable", "model_unavailable", "configuration_invalid"]
+
+
 class JobSearchResult(BaseModel):
     jobs: list[JobListing]
     provider_errors: list[ProviderSearchError] = []

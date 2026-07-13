@@ -6,11 +6,13 @@ import { RestToolClient } from "./restClient";
 import { ConfirmationDialog } from "../components/ConfirmationDialog";
 import { extractResumeFromFile } from "./resumeUpload";
 import { profileCreationFailureMessage } from "./profileCreation";
+import { localModelReadinessFailureMessage } from "./localModelReadiness";
 import "../styles.css";
 
 function BrowserWorkspace() {
   const [csrfToken, setCsrfToken] = useState<string>();
   const [candidateId, setCandidateId] = useState<string>();
+  const [modelReady, setModelReady] = useState(false);
   const [resumeText, setResumeText] = useState("");
   const [linkedinText, setLinkedinText] = useState("");
   const [status, setStatus] = useState("Preparing your private workspace.");
@@ -29,8 +31,19 @@ function BrowserWorkspace() {
     }).then(async (response) => {
       if (!response.ok) throw new Error();
       return response.json() as Promise<{ csrf_token: string }>;
-    }).then(({ csrf_token }) => {
+    }).then(async ({ csrf_token }) => {
+      const readiness = await fetch("/local-model/readiness", { credentials: "same-origin" });
       setCsrfToken(csrf_token);
+      if (!readiness.ok) {
+        setStatus(localModelReadinessFailureMessage());
+        return;
+      }
+      const payload = await readiness.json() as { ready?: unknown };
+      if (payload.ready !== true) {
+        setStatus(localModelReadinessFailureMessage());
+        return;
+      }
+      setModelReady(true);
       setStatus("");
     }).catch(() => setStatus("This startup link has expired. Open Talent Advisor again from the local launcher."));
   }, []);
@@ -70,7 +83,7 @@ function BrowserWorkspace() {
 
   if (!csrfToken || !candidateId) {
     return <main className="widget-shell"><header><p className="eyebrow">Talent Advisor</p><h1>Start your career workspace</h1><p>Upload a resume or paste its text to create a private profile you can review and correct. Nothing is sent to an employer.</p></header>
-      {csrfToken ? <form className="candidate-form" onSubmit={(event) => void createProfile(event)}><label htmlFor="resume-file">Resume file (DOCX or PDF)</label><input accept=".docx,.pdf,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" id="resume-file" onChange={(event) => void uploadResume(event)} type="file" /><p>The file is read only to extract text and is not stored. Review the extracted text below before continuing.</p><label htmlFor="resume-text">Resume text</label><textarea id="resume-text" maxLength={50_000} onChange={(event) => setResumeText(event.target.value)} required value={resumeText} /><label htmlFor="linkedin-text">LinkedIn text (optional)</label><textarea id="linkedin-text" maxLength={50_000} onChange={(event) => setLinkedinText(event.target.value)} value={linkedinText} /><button className="primary" disabled={!resumeText.trim()} type="submit">Create profile for review</button></form> : null}
+      {csrfToken && modelReady ? <form className="candidate-form" onSubmit={(event) => void createProfile(event)}><label htmlFor="resume-file">Resume file (DOCX or PDF)</label><input accept=".docx,.pdf,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" id="resume-file" onChange={(event) => void uploadResume(event)} type="file" /><p>The file is read only to extract text and is not stored. Review the extracted text below before continuing.</p><label htmlFor="resume-text">Resume text</label><textarea id="resume-text" maxLength={50_000} onChange={(event) => setResumeText(event.target.value)} required value={resumeText} /><label htmlFor="linkedin-text">LinkedIn text (optional)</label><textarea id="linkedin-text" maxLength={50_000} onChange={(event) => setLinkedinText(event.target.value)} value={linkedinText} /><button className="primary" disabled={!resumeText.trim()} type="submit">Create profile for review</button></form> : null}
       <p aria-live="polite" role="status">{status}</p></main>;
   }
   const client = new RestToolClient(csrfToken);

@@ -25,6 +25,7 @@ from app.models.schemas import (
     BrowserHandoffReceipt,
     ConfirmedScreeningAnswer,
     JobSearchFilters,
+    LocalModelReadiness,
     ProfileCorrectionRequest,
     ProfileReview,
 )
@@ -45,6 +46,7 @@ from app.services.document_service import (
     markdown_resume_to_docx,
 )
 from app.services import local_auth_service
+from app.services.local_model_readiness_service import check_local_model_readiness
 from app.services.browser_session_service import BrowserSessionStore
 from app.services.audit_service import (
     record_approval_audit_event,
@@ -433,6 +435,13 @@ async def require_local_authentication(request: Request, call_next):
 @app.get("/health")
 def health() -> dict:
     return {"ok": True}
+
+
+@app.get("/local-model/readiness", response_model=LocalModelReadiness)
+async def local_model_readiness() -> JSONResponse:
+    """Report safe readiness of the configured local model without runtime details."""
+    readiness = await check_local_model_readiness()
+    return JSONResponse(status_code=200 if readiness.ready else 503, content=readiness.model_dump())
 
 
 @app.post("/browser-session/launch")

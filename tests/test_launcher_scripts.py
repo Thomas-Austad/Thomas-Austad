@@ -14,12 +14,14 @@ def test_windows_command_launcher_uses_hidden_local_startup_without_bypassing_ex
     assert "wscript" not in script.lower()
 
 
-def test_first_run_launcher_collects_key_without_printing_it() -> None:
+def test_first_run_launcher_configures_local_model_without_collecting_or_printing_a_key() -> None:
     script = (ROOT / "scripts" / "Start-TalentAdvisor.ps1").read_text(encoding="utf-8")
 
-    assert "PasswordChar" in script
     assert "RandomNumberGenerator" in script
-    assert "Write-Host $apiKey" not in script
+    assert "Get-OpenAIKey" not in script
+    assert "OPENAI_API_KEY=$apiKey" not in script
+    assert "MODEL_PROVIDER=ollama" in script
+    assert "LOCAL_MODEL_NAME=qwen3:8b" in script
 
 
 def test_launcher_has_graphical_prerequisite_and_repeat_run_safeguards() -> None:
@@ -34,3 +36,8 @@ def test_launcher_has_graphical_prerequisite_and_repeat_run_safeguards() -> None
     assert "Test-ConfiguredPort" in script
     assert "No data was reset" in script
     assert "Add-EnvironmentValue" in script
+    assert "Test-LocalModelReadiness" in script
+    assert "Invoke-RestMethod" in script
+    assert "about 5.2 GB" in script
+    assert "Confirm-Action 'Talent Advisor needs to download qwen3:8b" in script
+    assert "& $ollama pull qwen3:8b" in script

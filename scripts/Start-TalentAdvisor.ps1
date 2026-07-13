@@ -21,22 +21,6 @@ function Confirm-Action([string]$message) {
   ) -eq 'Yes'
 }
 
-function Get-OpenAIKey {
-  $form = New-Object System.Windows.Forms.Form
-  $form.Text = 'Set up Talent Advisor'; $form.Width = 430; $form.Height = 190; $form.StartPosition = 'CenterScreen'
-  $label = New-Object System.Windows.Forms.Label
-  $label.Text = 'Enter your OpenAI API key. It stays only in your local Talent Advisor settings.'; $label.AutoSize = $true; $label.Left = 18; $label.Top = 20
-  $input = New-Object System.Windows.Forms.TextBox
-  $input.Left = 18; $input.Top = 52; $input.Width = 375; $input.PasswordChar = '*'
-  $continue = New-Object System.Windows.Forms.Button
-  $continue.Text = 'Continue'; $continue.Left = 230; $continue.Top = 92; $continue.DialogResult = 'OK'
-  $cancel = New-Object System.Windows.Forms.Button
-  $cancel.Text = 'Cancel'; $cancel.Left = 318; $cancel.Top = 92; $cancel.DialogResult = 'Cancel'
-  $form.Controls.AddRange(@($label, $input, $continue, $cancel)); $form.AcceptButton = $continue; $form.CancelButton = $cancel
-  if ($form.ShowDialog() -ne 'OK' -or [string]::IsNullOrWhiteSpace($input.Text)) { throw 'Setup was cancelled. No settings were created.' }
-  return $input.Text.Trim()
-}
-
 function Get-EnvironmentValue([string]$name) {
   if (-not (Test-Path $envFile)) { return $null }
   $match = [regex]::Match((Get-Content -LiteralPath $envFile -Raw), "(?m)^$([regex]::Escape($name))=(?<value>.*)$")
@@ -46,6 +30,18 @@ function Get-EnvironmentValue([string]$name) {
 
 function Add-EnvironmentValue([string]$name, [string]$value) {
   if ([string]::IsNullOrWhiteSpace((Get-EnvironmentValue $name))) {
+    Add-Content -LiteralPath $envFile -Value "$name=$value" -Encoding utf8
+  }
+}
+
+function Set-EnvironmentValue([string]$name, [string]$value) {
+  $pattern = "(?m)^$([regex]::Escape($name))=.*$"
+  if (-not (Test-Path $envFile)) {
+    Set-Content -LiteralPath $envFile -Value "$name=$value" -Encoding utf8
+  } elseif ([regex]::IsMatch((Get-Content -LiteralPath $envFile -Raw), $pattern)) {
+    $updated = [regex]::Replace((Get-Content -LiteralPath $envFile -Raw), $pattern, "$name=$value")
+    Set-Content -LiteralPath $envFile -Value $updated -Encoding utf8
+  } else {
     Add-Content -LiteralPath $envFile -Value "$name=$value" -Encoding utf8
   }
 }
@@ -82,12 +78,12 @@ function Install-LocalApplication {
 
 function Ensure-Configuration {
   if (-not (Test-Path $envFile)) {
-    $apiKey = Get-OpenAIKey
     $databasePassword = New-LocalSecret
     @(
       'APP_ENV=development',
-      "OPENAI_API_KEY=$apiKey",
-      'OPENAI_MODEL=gpt-5.6',
+      'MODEL_PROVIDER=ollama',
+      'LOCAL_MODEL_BASE_URL=http://127.0.0.1:11434',
+      'LOCAL_MODEL_NAME=qwen3:8b',
       'POSTGRES_USER=talent',
       "POSTGRES_PASSWORD=$databasePassword",
       'POSTGRES_DB=talent',
@@ -97,9 +93,9 @@ function Ensure-Configuration {
     return
   }
 
-  if ([string]::IsNullOrWhiteSpace((Get-EnvironmentValue 'OPENAI_API_KEY'))) {
-    Add-EnvironmentValue 'OPENAI_API_KEY' (Get-OpenAIKey)
-  }
+  Set-EnvironmentValue 'MODEL_PROVIDER' 'ollama'
+  if ([string]::IsNullOrWhiteSpace((Get-EnvironmentValue 'LOCAL_MODEL_BASE_URL'))) { Add-EnvironmentValue 'LOCAL_MODEL_BASE_URL' 'http://127.0.0.1:11434' }
+  if ([string]::IsNullOrWhiteSpace((Get-EnvironmentValue 'LOCAL_MODEL_NAME'))) { Add-EnvironmentValue 'LOCAL_MODEL_NAME' 'qwen3:8b' }
   if ([string]::IsNullOrWhiteSpace((Get-EnvironmentValue 'POSTGRES_USER'))) { Add-EnvironmentValue 'POSTGRES_USER' 'talent' }
   if ([string]::IsNullOrWhiteSpace((Get-EnvironmentValue 'POSTGRES_DB'))) { Add-EnvironmentValue 'POSTGRES_DB' 'talent' }
   if ([string]::IsNullOrWhiteSpace((Get-EnvironmentValue 'POSTGRES_PASSWORD'))) { Add-EnvironmentValue 'POSTGRES_PASSWORD' (New-LocalSecret) }
@@ -110,6 +106,31 @@ function Ensure-Configuration {
     Add-EnvironmentValue 'DATABASE_URL' "postgresql+psycopg://$user`:$password@localhost:5432/$database"
   }
   if ([string]::IsNullOrWhiteSpace((Get-EnvironmentValue 'PUBLIC_BASE_URL'))) { Add-EnvironmentValue 'PUBLIC_BASE_URL' 'http://127.0.0.1:8000' }
+}
+
+function Test-LocalModelReadiness {
+  $baseUrl = Get-EnvironmentValue 'LOCAL_MODEL_BASE_URL'
+  $modelName = Get-EnvironmentValue 'LOCAL_MODEL_NAME'
+  try { $uri = [Uri]$baseUrl } catch { throw 'Your local model address needs attention. No settings or data were changed. Please ask for help.' }
+  if ($uri.Scheme -notin @('http', 'https') -or $uri.Host -notin @('localhost', '127.0.0.1', '::1') -or -not $modelName) {
+    throw 'Your local model settings need attention. No settings or data were changed. Please ask for help.'
+  }
+  try {
+    $tags = Invoke-RestMethod -Uri "$($baseUrl.TrimEnd('/'))/api/tags" -TimeoutSec 5
+  } catch {
+    throw 'Talent Advisor cannot reach Ollama on this computer. Start Ollama, then open Talent Advisor again.'
+  }
+  if ($tags.models.name -contains $modelName) { return }
+  if ($modelName -ne 'qwen3:8b') {
+    throw 'The configured local model is not installed. Install it with Ollama, then open Talent Advisor again.'
+  }
+  if (-not (Confirm-Action 'Talent Advisor needs to download qwen3:8b (about 5.2 GB) for private local use. Select Yes to download it now.')) {
+    throw 'The local model was not downloaded. No settings or data were changed. You can install qwen3:8b manually with Ollama, then open Talent Advisor again.'
+  }
+  $ollama = Require-Command 'ollama' 'Ollama is needed for private local AI. Install and start Ollama, then open Talent Advisor again.'
+  & $ollama pull qwen3:8b | Out-Null
+  if ($LASTEXITCODE -ne 0) { throw 'Talent Advisor could not download the local model. Check Ollama and your internet connection, then try again.' }
+  Test-LocalModelReadiness
 }
 
 function Test-ConfiguredPort {
@@ -137,6 +158,7 @@ try {
   Ensure-Configuration
   & $python -c 'from app.config import Settings; Settings()' 2>$null
   if ($LASTEXITCODE -ne 0) { throw 'Your private Talent Advisor settings need attention. No settings or data were changed. Please ask for help.' }
+  Test-LocalModelReadiness
   $browserAssets = Join-Path $projectRoot 'browser_ui_dist\browser.html'
   if (-not (Test-Path $browserAssets)) { throw 'Talent Advisor needs a local update before it can open. Please run the installer or ask for help.' }
   Test-ConfiguredPort

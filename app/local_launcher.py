@@ -42,6 +42,23 @@ def request_browser_workspace_url(client: httpx.Client) -> str:
     return browser_url
 
 
+def require_local_model_ready(client: httpx.Client) -> None:
+    """Require safe local-model readiness before opening the browser workspace."""
+    try:
+        token = local_auth_service.get_local_access_token()
+        response = client.get(
+            f"{settings.public_base_url.rstrip('/')}/local-model/readiness",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        payload = response.json()
+    except (httpx.HTTPError, ValueError, local_auth_service.LocalCredentialUnavailable) as exc:
+        raise RuntimeError("Talent Advisor could not verify its local model. Start Ollama and try again.") from exc
+    if response.status_code != 200 or not isinstance(payload, dict) or payload.get("ready") is not True:
+        raise RuntimeError(
+            "Talent Advisor's local model is not ready. Start Ollama and confirm qwen3:8b is installed, then try again."
+        )
+
+
 def run() -> None:
     parsed = httpx.URL(settings.public_base_url)
     host = parsed.host or "127.0.0.1"
@@ -72,6 +89,7 @@ def run() -> None:
                 raise RuntimeError("Talent Advisor did not start on its local address")
 
         try:
+            require_local_model_ready(client)
             webbrowser.open(request_browser_workspace_url(client))
         except Exception:
             if server is not None:

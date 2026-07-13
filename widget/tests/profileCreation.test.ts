@@ -4,7 +4,7 @@ import { profileCreationFailureMessage } from "../src/browser/profileCreation";
 
 describe("profileCreationFailureMessage", () => {
   it("gives a non-sensitive recovery message for an unavailable profile service", () => {
-    expect(profileCreationFailureMessage(503)).toContain("internet connection");
+    expect(profileCreationFailureMessage(503)).toContain("local model service");
   });
 
   it("does not expose server details for unexpected failures", () => {
