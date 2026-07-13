@@ -1,9 +1,11 @@
-import { FormEvent, useEffect, useState } from "react";
+import { ChangeEvent, FormEvent, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 
 import { App } from "../App";
 import { RestToolClient } from "./restClient";
 import { ConfirmationDialog } from "../components/ConfirmationDialog";
+import { extractResumeFromFile } from "./resumeUpload";
+import { profileCreationFailureMessage } from "./profileCreation";
 import "../styles.css";
 
 function BrowserWorkspace() {
@@ -45,16 +47,30 @@ function BrowserWorkspace() {
       body: JSON.stringify({ candidate_id: nextCandidateId, resume_text: resumeText, linkedin_text: linkedinText })
     });
     if (!response.ok) {
-      setStatus("Your profile could not be created. Your text is still here so you can try again.");
+      setStatus(profileCreationFailureMessage(response.status));
       return;
     }
     setCandidateId(nextCandidateId);
     setStatus("");
   };
 
+  const uploadResume = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file || !csrfToken) return;
+    setStatus("Reading your resume so you can review the text before creating a profile.");
+    try {
+      setResumeText(await extractResumeFromFile(file, csrfToken));
+      setStatus("Resume text is ready for your review. Nothing has been sent to an employer.");
+    } catch {
+      setStatus("Your resume could not be read. Choose a DOCX or PDF file under 5 MB, or paste the text instead.");
+    } finally {
+      event.target.value = "";
+    }
+  };
+
   if (!csrfToken || !candidateId) {
-    return <main className="widget-shell"><header><p className="eyebrow">Talent Advisor</p><h1>Start your career workspace</h1><p>Paste your resume to create a private profile you can review and correct. Nothing is sent to an employer.</p></header>
-      {csrfToken ? <form className="candidate-form" onSubmit={(event) => void createProfile(event)}><label htmlFor="resume-text">Resume text</label><textarea id="resume-text" maxLength={50_000} onChange={(event) => setResumeText(event.target.value)} required value={resumeText} /><label htmlFor="linkedin-text">LinkedIn text (optional)</label><textarea id="linkedin-text" maxLength={50_000} onChange={(event) => setLinkedinText(event.target.value)} value={linkedinText} /><button className="primary" disabled={!resumeText.trim()} type="submit">Create profile for review</button></form> : null}
+    return <main className="widget-shell"><header><p className="eyebrow">Talent Advisor</p><h1>Start your career workspace</h1><p>Upload a resume or paste its text to create a private profile you can review and correct. Nothing is sent to an employer.</p></header>
+      {csrfToken ? <form className="candidate-form" onSubmit={(event) => void createProfile(event)}><label htmlFor="resume-file">Resume file (DOCX or PDF)</label><input accept=".docx,.pdf,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" id="resume-file" onChange={(event) => void uploadResume(event)} type="file" /><p>The file is read only to extract text and is not stored. Review the extracted text below before continuing.</p><label htmlFor="resume-text">Resume text</label><textarea id="resume-text" maxLength={50_000} onChange={(event) => setResumeText(event.target.value)} required value={resumeText} /><label htmlFor="linkedin-text">LinkedIn text (optional)</label><textarea id="linkedin-text" maxLength={50_000} onChange={(event) => setLinkedinText(event.target.value)} value={linkedinText} /><button className="primary" disabled={!resumeText.trim()} type="submit">Create profile for review</button></form> : null}
       <p aria-live="polite" role="status">{status}</p></main>;
   }
   const client = new RestToolClient(csrfToken);

@@ -29,6 +29,10 @@ Address issue #3 with a minimal, non-persistent ingestion path for PDF and DOCX 
    text-empty files.
 6. Add service and API tests for success and failure paths, including archive
    resource-exhaustion and path-traversal cases.
+7. Expose the existing extraction endpoint in the same-origin browser workspace
+   with a DOCX/PDF file picker. Validate the response at the browser boundary,
+   keep the raw file out of browser storage, and require the user to review the
+   extracted text before profile creation.
 
 ## Archive safety limits
 

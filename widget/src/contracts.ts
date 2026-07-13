@@ -98,6 +98,14 @@ export const profileReviewSchema = z.object({
 });
 export type ProfileReview = z.infer<typeof profileReviewSchema>;
 
+export const extractedResumeSchema = z.object({
+  filename: z.string().min(1).nullable().optional(),
+  content_type: z.enum(["application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"]),
+  text: z.string().min(1).max(50_000),
+  character_count: z.number().int().positive()
+});
+export type ExtractedResume = z.infer<typeof extractedResumeSchema>;
+
 export const profileCorrectionInputSchema = z.object({
   candidate_id: z.string().trim().min(1).max(128),
   field: profileFieldSchema,
