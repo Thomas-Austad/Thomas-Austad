@@ -14,11 +14,9 @@ screening gates, and application approval checks.
 
 ## Endpoint policy
 
-`MODEL_PROVIDER` selects exactly one provider. The currently retained OpenAI
-provider is selected only by `MODEL_PROVIDER=openai`; it is never used as a
-fallback when a local provider fails. `MODEL_PROVIDER=ollama` selects the
-local-only Ollama adapter and fails closed when the configured runtime or model
-is unavailable.
+`MODEL_PROVIDER=ollama` selects the sole local-only Ollama adapter. No remote
+provider or fallback exists; an unavailable configured runtime or model fails
+closed.
 
 Local runtime configuration is fixed process configuration, never HTTP, MCP,
 or model input. `LOCAL_MODEL_BASE_URL` must be an HTTP or HTTPS URL with the

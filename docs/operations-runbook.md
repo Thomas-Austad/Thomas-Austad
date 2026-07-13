@@ -16,8 +16,11 @@ requests targeting `main`.
 
 ## Configuration
 
-- `OPENAI_TIMEOUT_SECONDS` controls model request timeout seconds.
-- `OPENAI_MAX_RETRIES` controls SDK-level retries for model calls.
+- `LOCAL_MODEL_BASE_URL` must remain an HTTP(S) loopback-only Ollama endpoint.
+- `LOCAL_MODEL_NAME` selects the installed local model; the qualified default
+  is `qwen3:8b` Q4_K_M on a 32 GB memory-class host.
+- `MODEL_CONNECT_TIMEOUT_SECONDS`, `MODEL_READ_TIMEOUT_SECONDS`, and
+  `MODEL_MAX_RETRIES` bound local-model requests.
 - `CONNECTOR_TIMEOUT_SECONDS` controls ATS connector HTTP timeouts.
 - `CONNECTOR_MAX_ATTEMPTS` controls read-only connector retry attempts.
 - `CONNECTOR_MAX_RESPONSE_BYTES` bounds each ATS provider response (default: 2 MB).

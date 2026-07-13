@@ -11,10 +11,10 @@ that you choose to complete and submit yourself.
 2. On the first run, choose **Yes** if you want the launcher to install its
    private local application files. The launcher never installs software
    without this confirmation.
-3. Enter your OpenAI API key when prompted. It is masked while you type and is
-   saved only in your private local settings. You will never need to edit a
-   configuration file or copy a sign-in token.
-4. Wait while Talent Advisor verifies its private local storage. When it is
+3. Ensure Ollama is running locally with `qwen3:8b`. If the model is missing,
+   the launcher names its approximate 5.2 GB download before asking whether to
+   start it; you can decline and install it manually instead.
+4. Wait while Talent Advisor verifies its private local storage and model. When it is
    ready, your Career Workspace opens automatically in your default browser.
 
 Keep the Talent Advisor folder in a private location on your Windows account.
@@ -26,7 +26,8 @@ Before the first launch, install these normal desktop prerequisites:
 - Python 3.11 or later;
 - Docker Desktop, with its engine running;
 - Node.js LTS and pnpm; and
-- an OpenAI API key that can use the configured model.
+- Ollama with the `qwen3:8b` model; and
+- a 32 GB memory-class Windows host for the qualified local configuration.
 
 The launcher checks each prerequisite and explains the next step in plain
 language. It does not show a terminal, stack trace, database setting, or bearer
@@ -68,8 +69,8 @@ normal startup.
 | A local address is already in use | Close the other application using Talent Advisor’s private local address, then try again. If Talent Advisor is already running, opening the launcher again safely opens a fresh workspace. |
 | Local storage cannot start | Confirm Docker Desktop is ready, then try again. No data is reset by a failed start. |
 | The startup link expired | Close the browser tab and open Talent Advisor again from the launcher. |
-| An OpenAI problem occurs while creating a profile or package | Confirm that your API key is active and has access to the configured model, then restart Talent Advisor. |
-| Talent Advisor cannot reach the profile service | Confirm that your computer can make outbound HTTPS connections to `api.openai.com` (port 443), then try again. |
+| Ollama is not running or the model is missing | Start Ollama and confirm `qwen3:8b` is installed, then open Talent Advisor again. The launcher never downloads a model without first showing its size and receiving confirmation. |
+| Talent Advisor cannot create a profile or package | Confirm Ollama is running locally, then try again. No profile or application is created when the local model is unavailable. |
 
 Do not remove Docker volumes, the `.env` file, the local database, or the
 `var/audit/` directory unless you intentionally want to permanently delete

@@ -12,7 +12,7 @@ py -m venv .venv
 python -m pip install setuptools wheel
 python -m pip install -e ".[dev]" --no-build-isolation
 Copy-Item .env.example .env
-# Edit .env: set a unique POSTGRES_PASSWORD and set DATABASE_URL to the
+# Ensure Ollama is running with qwen3:8b. Edit .env: set a unique POSTGRES_PASSWORD and set DATABASE_URL to the
 # matching local PostgreSQL connection URL.
 docker compose up -d db
 python -m alembic upgrade head
@@ -42,3 +42,6 @@ python -m alembic upgrade head
   host; Docker Compose sets the API container to use the `db` service host.
 - Docker Compose is for local development. Its published ports bind to
   `127.0.0.1`; do not use this file as a production deployment configuration.
+- Local inference is Ollama-only at the validated loopback endpoint. Use the
+  qualified `qwen3:8b` Q4_K_M configuration on a 32 GB memory-class host; no
+  OpenAI Platform account or API key is used.

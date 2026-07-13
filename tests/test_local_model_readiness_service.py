@@ -32,8 +32,8 @@ async def test_readiness_fails_closed_for_missing_or_malformed_runtime_data(monk
     assert (unavailable.ready, unavailable.status) == (False, "runtime_unavailable")
 
 
-async def test_readiness_rejects_non_local_provider_configuration(monkeypatch) -> None:
-    monkeypatch.setattr("app.config.settings.model_provider", "openai")
+async def test_readiness_rejects_missing_local_model_configuration(monkeypatch) -> None:
+    monkeypatch.setattr("app.config.settings.local_model_name", "")
 
     readiness = await check_local_model_readiness(transport=_transport({"models": [{"name": "qwen3:8b"}]}))
 

@@ -19,27 +19,21 @@ def test_default_model_matches_the_example_configuration() -> None:
     example_model = next(
         line.partition("=")[2]
         for line in example_config.read_text(encoding="utf-8").splitlines()
-        if line.startswith("OPENAI_MODEL=")
+        if line.startswith("LOCAL_MODEL_NAME=")
     )
 
-    assert settings.openai_model == "gpt-5.6"
-    assert settings.openai_model == example_model
+    assert settings.model_provider == "ollama"
+    assert settings.local_model_name == "qwen3:8b"
+    assert settings.local_model_name == example_model
 
 
-def test_openai_model_can_be_explicitly_configured() -> None:
-    settings = Settings(openai_model="configured-model", _env_file=None)
-
-    assert settings.openai_model == "configured-model"
-
-
-def test_ollama_requires_an_explicit_local_model_name() -> None:
+def test_local_model_name_is_required() -> None:
     with pytest.raises(ValidationError, match="LOCAL_MODEL_NAME"):
-        Settings(model_provider="ollama", _env_file=None)
+        Settings(local_model_name="", _env_file=None)
 
 
 def test_ollama_accepts_validated_loopback_configuration() -> None:
     settings = Settings(
-        model_provider="ollama",
         local_model_name="synthetic-model",
         local_model_base_url="https://[::1]:11434",
         _env_file=None,
@@ -62,6 +56,11 @@ def test_ollama_accepts_validated_loopback_configuration() -> None:
 def test_local_model_base_url_must_be_a_fixed_loopback_endpoint(base_url: str) -> None:
     with pytest.raises(ValidationError, match="LOCAL_MODEL_BASE_URL"):
         Settings(local_model_base_url=base_url, _env_file=None)
+
+
+def test_remote_model_provider_is_rejected() -> None:
+    with pytest.raises(ValidationError, match="MODEL_PROVIDER"):
+        Settings(model_provider="openai", _env_file=None)
 
 
 def test_model_output_limit_cannot_exceed_context_limit() -> None:

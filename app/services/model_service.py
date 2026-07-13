@@ -4,7 +4,6 @@ from typing import Protocol
 
 from pydantic import BaseModel
 
-from app.config import settings
 
 
 class ModelServiceError(Exception):
@@ -44,13 +43,7 @@ class ModelService(Protocol):
 
 
 def create_model_service() -> ModelService:
-    """Return exactly the configured provider; never fall back to another provider."""
-    if settings.model_provider == "openai":
-        from app.services.openai_service import OpenAIService
+    """Return the sole local model provider; remote fallback is not supported."""
+    from app.services.ollama_service import OllamaService
 
-        return OpenAIService()
-    if settings.model_provider == "ollama":
-        from app.services.ollama_service import OllamaService
-
-        return OllamaService()
-    raise ModelServiceConfigurationError("The configured model provider is not supported.")
+    return OllamaService()

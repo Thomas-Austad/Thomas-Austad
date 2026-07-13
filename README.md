@@ -21,9 +21,9 @@ A personal-use, ChatGPT-native AI career platform MVP.
 ### Windows app launcher
 
 Double-click `scripts\\Start-TalentAdvisor.cmd`. On first use, the graphical
-launcher confirms before installing private local application files, asks for
-an OpenAI API key, creates any missing private database settings, starts only
-loopback services, and opens the Career Workspace. It never submits an
+launcher confirms before installing private local application files, configures
+the local Ollama runtime, creates any missing private database settings, starts
+only loopback services, and opens the Career Workspace. It never submits an
 application; local approval and employer-page handoff remain separate,
 confirmed actions. See [the Windows user guide](docs/local-run-and-use-guide.md)
 for prerequisites and recovery steps.
@@ -33,7 +33,7 @@ a plain-language recovery message and does not reset existing data.
 
 ```bash
 cp .env.example .env
-# Add OPENAI_API_KEY and a unique POSTGRES_PASSWORD.
+# Ensure Ollama is running with qwen3:8b, then add a unique POSTGRES_PASSWORD.
 # Set DATABASE_URL to the matching local PostgreSQL URL before running locally.
 python -m venv .venv
 source .venv/bin/activate  # Windows: .venv\\Scripts\\activate

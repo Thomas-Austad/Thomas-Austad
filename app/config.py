@@ -11,13 +11,9 @@ POSTGRES_SCHEMES = ("postgresql://", "postgresql+psycopg://", "postgresql+psycop
 
 class Settings(BaseSettings):
     app_env: Literal["development", "test", "production"] = "development"
-    model_provider: Literal["openai", "ollama"] = "openai"
-    openai_api_key: str = ""
-    openai_model: str = "gpt-5.6"
-    openai_timeout_seconds: float = 30
-    openai_max_retries: int = 2
+    model_provider: str = "ollama"
     local_model_base_url: str = "http://127.0.0.1:11434"
-    local_model_name: str = ""
+    local_model_name: str = "qwen3:8b"
     model_connect_timeout_seconds: float = Field(default=5, gt=0, le=60)
     model_read_timeout_seconds: float = Field(default=60, gt=0, le=300)
     model_max_retries: int = Field(default=1, ge=0, le=3)
@@ -97,8 +93,10 @@ class Settings(BaseSettings):
     def require_explicit_production_database_url(self) -> "Settings":
         if self.app_env == "production" and self.database_url == DEFAULT_DATABASE_URL:
             raise ValueError("Production DATABASE_URL must be set explicitly")
-        if self.model_provider == "ollama" and not self.local_model_name.strip():
-            raise ValueError("LOCAL_MODEL_NAME is required when MODEL_PROVIDER=ollama")
+        if self.model_provider != "ollama":
+            raise ValueError("MODEL_PROVIDER must be ollama")
+        if not self.local_model_name.strip():
+            raise ValueError("LOCAL_MODEL_NAME is required")
         if self.model_max_output_tokens >= self.model_context_limit:
             raise ValueError("MODEL_MAX_OUTPUT_TOKENS must be lower than MODEL_CONTEXT_LIMIT")
         max_context_request_bytes = (self.model_context_limit - self.model_max_output_tokens) * 4

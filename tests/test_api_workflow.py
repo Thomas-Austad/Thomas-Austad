@@ -88,7 +88,6 @@ def test_profile_review_and_correction_preserve_provenance_and_update_downstream
         assert screening_questions == []
         return sample_application
 
-    monkeypatch.setattr("app.services.openai_service.OpenAIService.__init__", lambda self: None)
     monkeypatch.setattr("app.main.ApplicationAgent.prepare", application_prepare)
     client = local_client()
 
@@ -192,7 +191,6 @@ def test_core_api_workflow_uses_stored_state(
         assert screening_questions == []
         return sample_application
 
-    monkeypatch.setattr("app.services.openai_service.OpenAIService.__init__", lambda self: None)
     monkeypatch.setattr("app.main.CandidateProfileAgent.run", profile_run)
     monkeypatch.setattr("app.main.JobService.search_known_boards", search_known_boards)
     monkeypatch.setattr("app.main.MatchAgent.run", match_run)
@@ -641,7 +639,6 @@ def test_model_backed_endpoint_rate_limit_returns_safe_error(monkeypatch, sample
     async def profile_run(self, candidate_id, resume_text, linkedin_text, preferences):
         return sample_profile
 
-    monkeypatch.setattr("app.services.openai_service.OpenAIService.__init__", lambda self: None)
     monkeypatch.setattr("app.main.CandidateProfileAgent.run", profile_run)
     client = local_client()
     payload = {"candidate_id": sample_profile.candidate_id, "resume_text": "Python"}
