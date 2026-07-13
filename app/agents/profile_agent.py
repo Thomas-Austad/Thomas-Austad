@@ -27,7 +27,10 @@ class CandidateProfileAgent:
 {untrusted_content_block("candidate_preferences", preferences)}
 
 Create a concise, market-ready profile. Every skill must include evidence."""
-        profile = await self.ai.structured(system=SYSTEM, user=prompt, schema=CandidateProfile)
+        try:
+            profile = await self.ai.structured(system=SYSTEM, user=prompt, schema=CandidateProfile)
+        except ModelServiceMalformedOutput:
+            return _profile_needing_user_review(candidate_id)
         _validate_profile_evidence(profile, candidate_id, resume_text, linkedin_text, preferences)
         return profile
 
@@ -82,3 +85,18 @@ def _has_lexical_support(claim: str, source_text: str) -> bool:
 
 def _meaningful_terms(value: str) -> set[str]:
     return {term.rstrip("s") for term in re.findall(r"[a-z0-9+#.]{2,}", value.casefold())}
+
+
+def _profile_needing_user_review(candidate_id: str) -> CandidateProfile:
+    """Fail safely without inventing claims when local structured output is unusable."""
+    return CandidateProfile(
+        candidate_id=candidate_id,
+        headline="Profile needs review",
+        current_level="Unspecified",
+        primary_functions=[],
+        skills=[],
+        experience=[],
+        ambiguities=[
+            "The local model could not produce a reliable structured profile. Review and add only supported details."
+        ],
+    )

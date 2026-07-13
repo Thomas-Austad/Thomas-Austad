@@ -193,14 +193,20 @@ async def test_profile_agent_does_not_require_a_skill_label_to_be_verbatim_in_th
     assert result.skills[0].name == "Backend engineering"
 
 
-async def test_profile_agent_propagates_partial_provider_failure() -> None:
-    with pytest.raises(ModelServiceMalformedOutput):
-        await CandidateProfileAgent(ai=FailingAI()).run(
-            "qualification-candidate",
-            "Built Python APIs.",
-            "",
-            {},
-        )
+async def test_profile_agent_returns_a_claim_free_review_profile_for_partial_provider_output() -> None:
+    profile = await CandidateProfileAgent(ai=FailingAI()).run(
+        "qualification-candidate",
+        "Built Python APIs.",
+        "",
+        {},
+    )
+
+    assert profile.candidate_id == "qualification-candidate"
+    assert profile.skills == []
+    assert profile.experience == []
+    assert profile.ambiguities == [
+        "The local model could not produce a reliable structured profile. Review and add only supported details."
+    ]
 
 
 async def test_opt_in_loopback_local_model_smoke(monkeypatch) -> None:
