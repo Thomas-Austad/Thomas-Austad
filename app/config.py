@@ -1,5 +1,5 @@
 from typing import Literal
-from urllib.parse import urlparse
+from urllib.parse import urlsplit
 
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -11,10 +11,18 @@ POSTGRES_SCHEMES = ("postgresql://", "postgresql+psycopg://", "postgresql+psycop
 
 class Settings(BaseSettings):
     app_env: Literal["development", "test", "production"] = "development"
+    model_provider: Literal["openai", "ollama"] = "openai"
     openai_api_key: str = ""
     openai_model: str = "gpt-5.6"
     openai_timeout_seconds: float = 30
     openai_max_retries: int = 2
+    local_model_base_url: str = "http://127.0.0.1:11434"
+    local_model_name: str = ""
+    model_connect_timeout_seconds: float = Field(default=5, gt=0, le=60)
+    model_read_timeout_seconds: float = Field(default=60, gt=0, le=300)
+    model_max_retries: int = Field(default=1, ge=0, le=3)
+    model_max_output_tokens: int = Field(default=4_096, ge=1, le=32_768)
+    model_context_limit: int = Field(default=8_192, ge=512, le=131_072)
     connector_timeout_seconds: float = 30
     connector_max_attempts: int = 2
     connector_max_response_bytes: int = Field(default=2_000_000, gt=0)
@@ -57,15 +65,40 @@ class Settings(BaseSettings):
     @field_validator("public_base_url")
     @classmethod
     def require_loopback_public_base_url(cls, value: str) -> str:
-        parsed = urlparse(value)
+        parsed = urlsplit(value)
         if parsed.scheme != "http" or parsed.hostname not in {"localhost", "127.0.0.1", "::1"}:
             raise ValueError("PUBLIC_BASE_URL must use an HTTP loopback address")
         return value
+
+    @field_validator("local_model_base_url")
+    @classmethod
+    def require_loopback_local_model_base_url(cls, value: str) -> str:
+        try:
+            parsed = urlsplit(value)
+            port = parsed.port
+        except ValueError as exc:
+            raise ValueError("LOCAL_MODEL_BASE_URL must use a valid loopback port") from exc
+        if (
+            parsed.scheme not in {"http", "https"}
+            or parsed.hostname not in {"localhost", "127.0.0.1", "::1"}
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.path not in {"", "/"}
+            or parsed.query
+            or parsed.fragment
+            or (port is not None and not 1 <= port <= 65_535)
+        ):
+            raise ValueError("LOCAL_MODEL_BASE_URL must use an HTTP(S) loopback address without a path")
+        return value.rstrip("/")
 
     @model_validator(mode="after")
     def require_explicit_production_database_url(self) -> "Settings":
         if self.app_env == "production" and self.database_url == DEFAULT_DATABASE_URL:
             raise ValueError("Production DATABASE_URL must be set explicitly")
+        if self.model_provider == "ollama" and not self.local_model_name.strip():
+            raise ValueError("LOCAL_MODEL_NAME is required when MODEL_PROVIDER=ollama")
+        if self.model_max_output_tokens > self.model_context_limit:
+            raise ValueError("MODEL_MAX_OUTPUT_TOKENS must not exceed MODEL_CONTEXT_LIMIT")
         return self
 
 

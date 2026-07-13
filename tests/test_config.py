@@ -32,6 +32,43 @@ def test_openai_model_can_be_explicitly_configured() -> None:
     assert settings.openai_model == "configured-model"
 
 
+def test_ollama_requires_an_explicit_local_model_name() -> None:
+    with pytest.raises(ValidationError, match="LOCAL_MODEL_NAME"):
+        Settings(model_provider="ollama", _env_file=None)
+
+
+def test_ollama_accepts_validated_loopback_configuration() -> None:
+    settings = Settings(
+        model_provider="ollama",
+        local_model_name="synthetic-model",
+        local_model_base_url="https://[::1]:11434",
+        _env_file=None,
+    )
+
+    assert settings.local_model_base_url == "https://[::1]:11434"
+
+
+@pytest.mark.parametrize(
+    "base_url",
+    [
+        "http://192.168.1.10:11434",
+        "http://localhost.evil.example:11434",
+        "http://user:password@127.0.0.1:11434",
+        "http://127.0.0.1:11434/api",
+        "ftp://127.0.0.1:11434",
+        "http://[::ffff:127.0.0.1]:11434",
+    ],
+)
+def test_local_model_base_url_must_be_a_fixed_loopback_endpoint(base_url: str) -> None:
+    with pytest.raises(ValidationError, match="LOCAL_MODEL_BASE_URL"):
+        Settings(local_model_base_url=base_url, _env_file=None)
+
+
+def test_model_output_limit_cannot_exceed_context_limit() -> None:
+    with pytest.raises(ValidationError, match="MODEL_MAX_OUTPUT_TOKENS"):
+        Settings(model_max_output_tokens=8_193, model_context_limit=8_192, _env_file=None)
+
+
 @pytest.mark.parametrize(
     "database_url",
     [

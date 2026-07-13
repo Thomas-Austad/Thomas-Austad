@@ -7,7 +7,7 @@ from app.models.schemas import (
     JobListing,
     ScreeningQuestionReview,
 )
-from app.services.openai_service import OpenAIService
+from app.services.model_service import ModelService, create_model_service
 
 
 class DraftPackage(BaseModel):
@@ -102,8 +102,8 @@ def _append_unique_review(
 
 
 class ApplicationAgent:
-    def __init__(self, ai: OpenAIService | None = None) -> None:
-        self.ai = ai or OpenAIService()
+    def __init__(self, ai: ModelService | None = None) -> None:
+        self.ai = ai or create_model_service()
 
     async def prepare(self, profile: CandidateProfile, job: JobListing, screening_questions: list[str]) -> ApplicationPackage:
         prompt = (

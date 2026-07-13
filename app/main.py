@@ -12,7 +12,6 @@ from urllib.parse import urlsplit
 from fastapi import FastAPI, File, HTTPException, Request, Response, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from openai import APIConnectionError, APIStatusError, AuthenticationError, RateLimitError
 from pydantic import BaseModel, model_validator
 from pydantic import Field
 from app.agents.profile_agent import CandidateProfileAgent
@@ -30,6 +29,14 @@ from app.models.schemas import (
     ProfileReview,
 )
 from app.services.job_service import JobService
+from app.services.model_service import (
+    ModelServiceConfigurationError,
+    ModelServiceError,
+    ModelServiceMalformedOutput,
+    ModelServiceOverloaded,
+    ModelServiceTimeout,
+    ModelServiceUnavailable,
+)
 from app.services.document_service import (
     MAX_RESUME_UPLOAD_BYTES,
     ResumeExtractionError,
@@ -56,6 +63,23 @@ browser_sessions = BrowserSessionStore(
     bootstrap_ttl_seconds=settings.browser_bootstrap_ttl_seconds,
     session_ttl_seconds=settings.browser_session_ttl_seconds,
 )
+
+
+@app.exception_handler(ModelServiceError)
+async def handle_model_service_error(_request: Request, exc: ModelServiceError) -> JSONResponse:
+    if isinstance(exc, ModelServiceOverloaded):
+        return JSONResponse(status_code=429, content={"detail": "Model service is temporarily busy. Try again shortly."})
+    if isinstance(exc, ModelServiceConfigurationError):
+        detail = "Model service configuration needs attention. Check the selected local provider settings."
+    elif isinstance(exc, ModelServiceMalformedOutput):
+        detail = "Model service returned an invalid response. No changes were saved; try again shortly."
+    elif isinstance(exc, ModelServiceTimeout):
+        detail = "Model service took too long to respond. Try again shortly."
+    elif isinstance(exc, ModelServiceUnavailable):
+        detail = "Model service cannot be reached. Check the configured model service and try again."
+    else:
+        detail = "Model service is temporarily unavailable. Try again shortly."
+    return JSONResponse(status_code=503 if not isinstance(exc, ModelServiceMalformedOutput) else 502, content={"detail": detail})
 
 ShortText = Annotated[str, Field(min_length=1, max_length=128)]
 MediumText = Annotated[str, Field(max_length=2_000)]
@@ -457,16 +481,7 @@ app.mount("/app", StaticFiles(directory=BROWSER_UI_DIST_DIR, check_dir=False), n
 
 @app.post("/profiles")
 async def create_profile(req: ProfileRequest):
-    try:
-        profile = await CandidateProfileAgent().run(req.candidate_id, req.resume_text, req.linkedin_text, req.preferences)
-    except APIConnectionError as exc:
-        raise HTTPException(503, "Profile service cannot be reached. Check your internet connection and try again.") from exc
-    except AuthenticationError as exc:
-        raise HTTPException(503, "Profile service configuration needs attention. Update your local OpenAI settings and restart Talent Advisor.") from exc
-    except RateLimitError as exc:
-        raise HTTPException(429, "Profile service is temporarily busy. Wait a moment and try again.") from exc
-    except APIStatusError as exc:
-        raise HTTPException(502, "Profile service is temporarily unavailable. Try again shortly.") from exc
+    profile = await CandidateProfileAgent().run(req.candidate_id, req.resume_text, req.linkedin_text, req.preferences)
     store.profiles[profile.candidate_id] = profile
     return profile
 
